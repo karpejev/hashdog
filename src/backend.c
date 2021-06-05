@@ -3037,6 +3037,19 @@ int choose_kernel (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, 
         if (run_kernel_amp (hashcat_ctx, device_param, pws_cnt) == -1) return -1;
       }
 
+      if (hashconfig->opts_type & OPTS_TYPE_POST_AMP_UTF16LE)
+      {
+        if (device_param->is_cuda == true)
+        {
+          if (run_cuda_kernel_utf8toutf16le (hashcat_ctx, device_param, device_param->cuda_d_pws_buf, pws_cnt) == -1) return -1;
+        }
+
+        if (device_param->is_opencl == true)
+        {
+          if (run_opencl_kernel_utf8toutf16le (hashcat_ctx, device_param, device_param->opencl_d_pws_buf, pws_cnt) == -1) return -1;
+        }
+      }
+
       if (run_kernel (hashcat_ctx, device_param, KERN_RUN_1, pws_pos, pws_cnt, false, 0) == -1) return -1;
 
       if (hashconfig->opts_type & OPTS_TYPE_HOOK12)
@@ -3414,6 +3427,26 @@ int run_cuda_kernel_atinit (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *devic
   return 0;
 }
 
+int run_cuda_kernel_utf8toutf16le (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, CUdeviceptr buf, const u64 num)
+{
+  u64 num_elements = num;
+
+  device_param->kernel_params_utf8toutf16le[0]       = (void *) &buf;
+  device_param->kernel_params_utf8toutf16le_buf64[1] = num_elements;
+
+  const u64 kernel_threads = device_param->kernel_wgs_utf8toutf16le;
+
+  num_elements = CEILDIV (num_elements, kernel_threads);
+
+  CUfunction function = device_param->cuda_function_utf8toutf16le;
+
+  if (hc_cuLaunchKernel (hashcat_ctx, function, num_elements, 1, 1, kernel_threads, 1, 1, 0, device_param->cuda_stream, device_param->kernel_params_utf8toutf16le, NULL) == -1) return -1;
+
+  if (hc_cuStreamSynchronize (hashcat_ctx, device_param->cuda_stream) == -1) return -1;
+
+  return 0;
+}
+
 int run_cuda_kernel_memset (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, CUdeviceptr buf, const u32 value, const u64 size)
 {
   const u64 num16d = size / 16;
@@ -3485,6 +3518,34 @@ int run_opencl_kernel_atinit (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *dev
   if (hc_clSetKernelArg (hashcat_ctx, kernel, 0, sizeof (cl_mem), (void *) &buf) == -1) return -1;
 
   if (hc_clSetKernelArg (hashcat_ctx, kernel, 1, sizeof (cl_ulong), device_param->kernel_params_atinit[1]) == -1) return -1;
+
+  if (hc_clEnqueueNDRangeKernel (hashcat_ctx, device_param->opencl_command_queue, kernel, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL) == -1) return -1;
+
+  if (hc_clFlush (hashcat_ctx, device_param->opencl_command_queue) == -1) return -1;
+
+  if (hc_clFinish (hashcat_ctx, device_param->opencl_command_queue) == -1) return -1;
+
+  return 0;
+}
+
+int run_opencl_kernel_utf8toutf16le (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, cl_mem buf, const u64 num)
+{
+  u64 num_elements = num;
+
+  device_param->kernel_params_utf8toutf16le_buf64[1] = num_elements;
+
+  const u64 kernel_threads = device_param->kernel_wgs_utf8toutf16le;
+
+  num_elements = round_up_multiple_64 (num_elements, kernel_threads);
+
+  cl_kernel kernel = device_param->opencl_kernel_utf8toutf16le;
+
+  const size_t global_work_size[3] = { num_elements,    1, 1 };
+  const size_t local_work_size[3]  = { kernel_threads,  1, 1 };
+
+  if (hc_clSetKernelArg (hashcat_ctx, kernel, 0, sizeof (cl_mem), (void *) &buf) == -1) return -1;
+
+  if (hc_clSetKernelArg (hashcat_ctx, kernel, 1, sizeof (cl_ulong), device_param->kernel_params_utf8toutf16le[1]) == -1) return -1;
 
   if (hc_clEnqueueNDRangeKernel (hashcat_ctx, device_param->opencl_command_queue, kernel, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL) == -1) return -1;
 
@@ -3624,17 +3685,17 @@ int run_kernel (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_param, con
     dynamic_shared_mem = 0;
   }
 
-  if (device_param->is_cuda == true)
-  {
-    if ((device_param->kernel_dynamic_local_mem_size_memset % device_param->device_local_mem_size) == 0)
-    {
+  //if (device_param->is_cuda == true)
+  //{
+    //if ((device_param->kernel_dynamic_local_mem_size_memset % device_param->device_local_mem_size) == 0)
+    //{
       // this is the case Compute Capability 7.5
       // there is also Compute Capability 7.0 which offers a larger dynamic local size access
       // however, if it's an exact multiple the driver can optimize this for us more efficient
 
-      dynamic_shared_mem = 0;
-    }
-  }
+      //dynamic_shared_mem = 0;
+    //}
+  //}
 
   kernel_threads = MIN (kernel_threads, device_param->kernel_threads);
 
@@ -5996,21 +6057,58 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
 
         // device_name
 
-        if (hc_clGetDeviceInfo (hashcat_ctx, device_param->opencl_device, CL_DEVICE_NAME, 0, NULL, &param_value_size) == -1)
+        // try CL_DEVICE_BOARD_NAME_AMD first, if it fails fall back to CL_DEVICE_NAME
+        // since AMD ROCm does not identify itself at this stage we simply check for return code from clGetDeviceInfo()
+
+        #define CHECK_BOARD_NAME_AMD 1
+
+        cl_int rc_board_name_amd = 0;
+
+        if (CHECK_BOARD_NAME_AMD)
         {
-          device_param->skipped = true;
-          continue;
+          backend_ctx_t *backend_ctx = hashcat_ctx->backend_ctx;
+
+          OCL_PTR *ocl = (OCL_PTR *) backend_ctx->ocl;
+
+          rc_board_name_amd = ocl->clGetDeviceInfo (device_param->opencl_device, CL_DEVICE_BOARD_NAME_AMD, 0, NULL, NULL);
         }
 
-        char *device_name = (char *) hcmalloc (param_value_size);
-
-        if (hc_clGetDeviceInfo (hashcat_ctx, device_param->opencl_device, CL_DEVICE_NAME, param_value_size, device_name, NULL) == -1)
+        if (rc_board_name_amd == CL_SUCCESS)
         {
-          device_param->skipped = true;
-          continue;
-        }
+          if (hc_clGetDeviceInfo (hashcat_ctx, device_param->opencl_device, CL_DEVICE_BOARD_NAME_AMD, 0, NULL, &param_value_size) == -1)
+          {
+            device_param->skipped = true;
+            continue;
+          }
 
-        device_param->device_name = device_name;
+          char *device_name = (char *) hcmalloc (param_value_size);
+
+          if (hc_clGetDeviceInfo (hashcat_ctx, device_param->opencl_device, CL_DEVICE_BOARD_NAME_AMD, param_value_size, device_name, NULL) == -1)
+          {
+            device_param->skipped = true;
+            continue;
+          }
+
+          device_param->device_name = device_name;
+        }
+        else
+        {
+          if (hc_clGetDeviceInfo (hashcat_ctx, device_param->opencl_device, CL_DEVICE_NAME, 0, NULL, &param_value_size) == -1)
+          {
+            device_param->skipped = true;
+            continue;
+          }
+
+          char *device_name = (char *) hcmalloc (param_value_size);
+
+          if (hc_clGetDeviceInfo (hashcat_ctx, device_param->opencl_device, CL_DEVICE_NAME, param_value_size, device_name, NULL) == -1)
+          {
+            device_param->skipped = true;
+            continue;
+          }
+
+          device_param->device_name = device_name;
+        }
 
         hc_string_trim_leading (device_param->device_name);
 
@@ -6611,39 +6709,43 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
 
             device_param->spin_damp = (double) user_options->spin_damp / 100;
 
-            // recommend CUDA
 
-            if ((backend_ctx->cuda == NULL) || (backend_ctx->nvrtc == NULL))
+            if (user_options->stdout_flag == false)
             {
-              if (user_options->backend_ignore_cuda == false)
+              // recommend CUDA
+
+              if ((backend_ctx->cuda == NULL) || (backend_ctx->nvrtc == NULL))
               {
-                if (backend_ctx->rc_cuda_init == -1)
+                if (user_options->backend_ignore_cuda == false)
                 {
-                  event_log_warning (hashcat_ctx, "Failed to initialize NVIDIA CUDA library.");
-                  event_log_warning (hashcat_ctx, NULL);
-                }
-                else
-                {
-                  event_log_warning (hashcat_ctx, "Successfully initialized NVIDIA CUDA library.");
-                  event_log_warning (hashcat_ctx, NULL);
-                }
+                  if (backend_ctx->rc_cuda_init == -1)
+                  {
+                    event_log_warning (hashcat_ctx, "Failed to initialize NVIDIA CUDA library.");
+                    event_log_warning (hashcat_ctx, NULL);
+                  }
+                  else
+                  {
+                    event_log_warning (hashcat_ctx, "Successfully initialized NVIDIA CUDA library.");
+                    event_log_warning (hashcat_ctx, NULL);
+                  }
 
-                if (backend_ctx->rc_nvrtc_init == -1)
-                {
-                  event_log_warning (hashcat_ctx, "Failed to initialize NVIDIA RTC library.");
+                  if (backend_ctx->rc_nvrtc_init == -1)
+                  {
+                    event_log_warning (hashcat_ctx, "Failed to initialize NVIDIA RTC library.");
+                    event_log_warning (hashcat_ctx, NULL);
+                  }
+                  else
+                  {
+                    event_log_warning (hashcat_ctx, "Successfully initialized NVIDIA RTC library.");
+                    event_log_warning (hashcat_ctx, NULL);
+                  }
+
+                  event_log_warning (hashcat_ctx, "* Device #%u: CUDA SDK Toolkit installation NOT detected or incorrectly installed.", device_id + 1);
+                  event_log_warning (hashcat_ctx, "             CUDA SDK Toolkit installation required for proper device support and utilization");
+                  event_log_warning (hashcat_ctx, "             Falling back to OpenCL Runtime");
+
                   event_log_warning (hashcat_ctx, NULL);
                 }
-                else
-                {
-                  event_log_warning (hashcat_ctx, "Successfully initialized NVIDIA RTC library.");
-                  event_log_warning (hashcat_ctx, NULL);
-                }
-
-                event_log_warning (hashcat_ctx, "* Device #%u: CUDA SDK Toolkit installation NOT detected or incorrectly installed.", device_id + 1);
-                event_log_warning (hashcat_ctx, "             CUDA SDK Toolkit installation required for proper device support and utilization");
-                event_log_warning (hashcat_ctx, "             Falling back to OpenCL Runtime");
-
-                event_log_warning (hashcat_ctx, NULL);
               }
             }
           }
@@ -8677,6 +8779,18 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
         if (get_cuda_kernel_dynamic_local_mem_size (hashcat_ctx, device_param->cuda_function_decompress, &device_param->kernel_dynamic_local_mem_size_decompress) == -1) return -1;
 
         device_param->kernel_preferred_wgs_multiple_decompress = device_param->cuda_warp_size;
+
+        // GPU utf8 to utf16le conversion
+
+        if (hc_cuModuleGetFunction (hashcat_ctx, &device_param->cuda_function_utf8toutf16le, device_param->cuda_module_shared, "gpu_utf8_to_utf16") == -1) return -1;
+
+        if (get_cuda_kernel_wgs (hashcat_ctx, device_param->cuda_function_utf8toutf16le, &device_param->kernel_wgs_utf8toutf16le) == -1) return -1;
+
+        if (get_cuda_kernel_local_mem_size (hashcat_ctx, device_param->cuda_function_utf8toutf16le, &device_param->kernel_local_mem_size_utf8toutf16le) == -1) return -1;
+
+        if (get_cuda_kernel_dynamic_local_mem_size (hashcat_ctx, device_param->cuda_function_utf8toutf16le, &device_param->kernel_dynamic_local_mem_size_utf8toutf16le) == -1) return -1;
+
+        device_param->kernel_preferred_wgs_multiple_utf8toutf16le = device_param->cuda_warp_size;
       }
 
       if (device_param->is_opencl == true)
@@ -8716,6 +8830,18 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
         if (get_opencl_kernel_dynamic_local_mem_size (hashcat_ctx, device_param, device_param->opencl_kernel_decompress, &device_param->kernel_dynamic_local_mem_size_decompress) == -1) return -1;
 
         if (get_opencl_kernel_preferred_wgs_multiple (hashcat_ctx, device_param, device_param->opencl_kernel_decompress, &device_param->kernel_preferred_wgs_multiple_decompress) == -1) return -1;
+
+        // GPU utf8 to utf16le conversion
+
+        if (hc_clCreateKernel (hashcat_ctx, device_param->opencl_program_shared, "gpu_utf8_to_utf16", &device_param->opencl_kernel_utf8toutf16le) == -1) return -1;
+
+        if (get_opencl_kernel_wgs (hashcat_ctx, device_param, device_param->opencl_kernel_utf8toutf16le, &device_param->kernel_wgs_utf8toutf16le) == -1) return -1;
+
+        if (get_opencl_kernel_local_mem_size (hashcat_ctx, device_param, device_param->opencl_kernel_utf8toutf16le, &device_param->kernel_local_mem_size_utf8toutf16le) == -1) return -1;
+
+        if (get_opencl_kernel_dynamic_local_mem_size (hashcat_ctx, device_param, device_param->opencl_kernel_utf8toutf16le, &device_param->kernel_dynamic_local_mem_size_utf8toutf16le) == -1) return -1;
+
+        if (get_opencl_kernel_preferred_wgs_multiple (hashcat_ctx, device_param, device_param->opencl_kernel_utf8toutf16le, &device_param->kernel_preferred_wgs_multiple_utf8toutf16le) == -1) return -1;
       }
     }
 
@@ -9413,6 +9539,11 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
     device_param->kernel_params_atinit[0] = NULL;
     device_param->kernel_params_atinit[1] = &device_param->kernel_params_atinit_buf64[1];
 
+    device_param->kernel_params_utf8toutf16le_buf64[1] = 0; // gid_max
+
+    device_param->kernel_params_utf8toutf16le[0] = NULL;
+    device_param->kernel_params_utf8toutf16le[1] = &device_param->kernel_params_utf8toutf16le_buf64[1];
+
     device_param->kernel_params_decompress_buf64[3] = 0; // gid_max
 
     if (device_param->is_cuda == true)
@@ -10053,6 +10184,11 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_clSetKernelArg (hashcat_ctx, device_param->opencl_kernel_atinit, 0, sizeof (cl_mem),   device_param->kernel_params_atinit[0]) == -1) return -1;
       if (hc_clSetKernelArg (hashcat_ctx, device_param->opencl_kernel_atinit, 1, sizeof (cl_ulong), device_param->kernel_params_atinit[1]) == -1) return -1;
+
+      // GPU utf8 to utf16le init
+
+      if (hc_clSetKernelArg (hashcat_ctx, device_param->opencl_kernel_utf8toutf16le, 0, sizeof (cl_mem),   device_param->kernel_params_utf8toutf16le[0]) == -1) return -1;
+      if (hc_clSetKernelArg (hashcat_ctx, device_param->opencl_kernel_utf8toutf16le, 1, sizeof (cl_ulong), device_param->kernel_params_utf8toutf16le[1]) == -1) return -1;
 
       // GPU decompress
 
@@ -11238,6 +11374,7 @@ void backend_session_destroy (hashcat_ctx_t *hashcat_ctx)
       device_param->cuda_function_amp         = NULL;
       device_param->cuda_function_memset      = NULL;
       device_param->cuda_function_atinit      = NULL;
+      device_param->cuda_function_utf8toutf16le = NULL;
       device_param->cuda_function_decompress  = NULL;
       device_param->cuda_function_aux1        = NULL;
       device_param->cuda_function_aux2        = NULL;
@@ -11309,6 +11446,7 @@ void backend_session_destroy (hashcat_ctx_t *hashcat_ctx)
       if (device_param->opencl_kernel_amp)       hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_amp);
       if (device_param->opencl_kernel_memset)    hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_memset);
       if (device_param->opencl_kernel_atinit)    hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_atinit);
+      if (device_param->opencl_kernel_utf8toutf16le) hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_utf8toutf16le);
       if (device_param->opencl_kernel_decompress)hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_decompress);
       if (device_param->opencl_kernel_aux1)      hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_aux1);
       if (device_param->opencl_kernel_aux2)      hc_clReleaseKernel (hashcat_ctx, device_param->opencl_kernel_aux2);
@@ -11378,6 +11516,7 @@ void backend_session_destroy (hashcat_ctx_t *hashcat_ctx)
       device_param->opencl_kernel_amp          = NULL;
       device_param->opencl_kernel_memset       = NULL;
       device_param->opencl_kernel_atinit       = NULL;
+      device_param->opencl_kernel_utf8toutf16le = NULL;
       device_param->opencl_kernel_decompress   = NULL;
       device_param->opencl_kernel_aux1         = NULL;
       device_param->opencl_kernel_aux2         = NULL;
