@@ -671,7 +671,6 @@ typedef enum user_options_defaults
   SCRYPT_TMTO              = 0,
   SEGMENT_SIZE             = 33554432,
   SELF_TEST_DISABLE        = false,
-  SEPARATOR                = ':',
   SHOW                     = false,
   SKIP                     = 0,
   SLOW_CANDIDATES          = false,
@@ -1117,6 +1116,8 @@ typedef struct hc_device_param
   int     sm_major;
   int     sm_minor;
   u32     kernel_exec_timeout;
+
+  u32     kernel_preferred_wgs_multiple;
 
   st_status_t st_status;
 
@@ -2103,6 +2104,7 @@ typedef struct user_options
   bool         skip_chgd;
   bool         limit_chgd;
   bool         scrypt_tmto_chgd;
+  bool         separator_chgd;
 
   bool         advice_disable;
   bool         benchmark;
@@ -2172,7 +2174,7 @@ typedef struct user_options
   char        *potfile_path;
   char        *restore_file_path;
   char       **rp_files;
-  char         separator;
+  char        *separator;
   char        *truecrypt_keyfiles;
   char        *veracrypt_keyfiles;
   const char  *custom_charset_1;
@@ -2237,6 +2239,8 @@ typedef struct user_options_extra
   u32 rule_len_l;
 
   u32 wordlist_mode;
+
+  char   separator;
 
   char  *hc_hash;   // can be filename or string
 
