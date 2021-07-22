@@ -5,7 +5,4 @@
 
 #include "common.h"
 #include "types.h"
-#include "emu_general.h"
-
-#include "inc_veracrypt_xts.cl"
-
+#include "ext_hip.h"

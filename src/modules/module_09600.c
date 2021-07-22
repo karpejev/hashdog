@@ -20,8 +20,10 @@ static const u32   HASH_CATEGORY  = HASH_CATEGORY_DOCUMENTS;
 static const char *HASH_NAME      = "MS Office 2013";
 static const u64   KERN_TYPE      = 9600;
 static const u32   OPTI_TYPE      = OPTI_TYPE_ZERO_BYTE
+                                  | OPTI_TYPE_USES_BITS_64
                                   | OPTI_TYPE_SLOW_HASH_SIMD_LOOP;
 static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE
+                                  | OPTS_TYPE_MP_MULTI_DISABLE
                                   | OPTS_TYPE_DEEP_COMP_KERNEL;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "hashcat";
@@ -80,6 +82,12 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
 
   // NVIDIA GPU
   if (device_param->opencl_device_vendor_id == VENDOR_ID_NV)
+  {
+    hc_asprintf (&jit_build_options, "-D _unroll");
+  }
+
+  // HIP
+  if (device_param->opencl_device_vendor_id == VENDOR_ID_AMD_USE_HIP)
   {
     hc_asprintf (&jit_build_options, "-D _unroll");
   }

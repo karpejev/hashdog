@@ -81,13 +81,13 @@ typedef struct timespec   hc_timer_t;
 #endif
 
 #if defined (_WIN)
-typedef HANDLE          hc_thread_t;
-typedef HANDLE          hc_thread_mutex_t;
-typedef HANDLE          hc_thread_semaphore_t;
+typedef HANDLE           hc_thread_t;
+typedef CRITICAL_SECTION hc_thread_mutex_t;
+typedef HANDLE           hc_thread_semaphore_t;
 #else
-typedef pthread_t       hc_thread_t;
-typedef pthread_mutex_t hc_thread_mutex_t;
-typedef sem_t           hc_thread_semaphore_t;
+typedef pthread_t        hc_thread_t;
+typedef pthread_mutex_t  hc_thread_mutex_t;
+typedef sem_t            hc_thread_semaphore_t;
 #endif
 
 // enums
@@ -103,6 +103,8 @@ typedef enum loglevel
 
 typedef enum event_identifier
 {
+  EVENT_AUTODETECT_FINISHED       = 0x00000100,
+  EVENT_AUTODETECT_STARTING       = 0x00000101,
   EVENT_AUTOTUNE_FINISHED         = 0x00000000,
   EVENT_AUTOTUNE_STARTING         = 0x00000001,
   EVENT_BITMAP_INIT_POST          = 0x00000010,
@@ -182,6 +184,7 @@ typedef enum vendor_id
   VENDOR_ID_NV            = (1U << 5),
   VENDOR_ID_POCL          = (1U << 6),
   VENDOR_ID_AMD_USE_INTEL = (1U << 7),
+  VENDOR_ID_AMD_USE_HIP   = (1U << 8),
   VENDOR_ID_GENERIC       = (1U << 31)
 
 } vendor_id_t;
@@ -210,6 +213,7 @@ typedef enum status_rc
   STATUS_ABORTED_RUNTIME    = 11,
   STATUS_ERROR              = 13,
   STATUS_ABORTED_FINISH     = 14,
+  STATUS_AUTODETECT         = 16,
 
 } status_rc_t;
 
@@ -443,6 +447,7 @@ typedef enum opts_type
   OPTS_TYPE_MP_MULTI_DISABLE  = (1ULL << 52), // do not multiply the kernel-accel with the multiprocessor count per device to allow more fine-tuned workload settings
   OPTS_TYPE_NATIVE_THREADS    = (1ULL << 53), // forces "native" thread count: CPU=1, GPU-Intel=8, GPU-AMD=64 (wavefront), GPU-NV=32 (warps)
   OPTS_TYPE_POST_AMP_UTF16LE  = (1ULL << 54), // run the utf8 to utf16le conversion kernel after they have been processed from amplifiers
+  OPTS_TYPE_AUTODETECT_DISABLE = (1ULL << 55), // skip autodetect engine
 
 } opts_type_t;
 
@@ -594,6 +599,7 @@ typedef enum user_options_defaults
 {
   ADVICE_DISABLE           = false,
   ATTACK_MODE              = ATTACK_MODE_STRAIGHT,
+  AUTODETECT               = false,
   BENCHMARK_ALL            = false,
   BENCHMARK                = false,
   BITMAP_MAX               = 18,
@@ -608,7 +614,11 @@ typedef enum user_options_defaults
   DEBUG_MODE               = 0,
   FORCE                    = false,
   HWMON_DISABLE            = false,
+  #if defined (__APPLE__)
+  HWMON_TEMP_ABORT         = 100,
+  #else
   HWMON_TEMP_ABORT         = 90,
+  #endif
   HASH_INFO                = false,
   HASH_MODE                = 0,
   HCCAPX_MESSAGE_PAIR      = 0,
@@ -616,6 +626,7 @@ typedef enum user_options_defaults
   HEX_SALT                 = false,
   HEX_WORDLIST             = false,
   HOOK_THREADS             = 0,
+  IDENTIFY                 = false,
   INCREMENT                = false,
   INCREMENT_MAX            = PW_MAX,
   INCREMENT_MIN            = 1,
@@ -631,13 +642,16 @@ typedef enum user_options_defaults
   MACHINE_READABLE         = false,
   MARKOV_CLASSIC           = false,
   MARKOV_DISABLE           = false,
+  MARKOV_INVERSE           = false,
   MARKOV_THRESHOLD         = 0,
   NONCE_ERROR_CORRECTIONS  = 8,
   BACKEND_IGNORE_CUDA      = false,
+  BACKEND_IGNORE_HIP       = false,
   BACKEND_IGNORE_OPENCL    = false,
   BACKEND_INFO             = false,
   BACKEND_VECTOR_WIDTH     = 0,
   OPTIMIZED_KERNEL_ENABLE  = false,
+  MULTIPLY_ACCEL_DISABLE   = false,
   OUTFILE_AUTOHEX          = true,
   OUTFILE_CHECK_TIMER      = 5,
   OUTFILE_FORMAT           = 3,
@@ -684,111 +698,115 @@ typedef enum user_options_map
   IDX_ATTACK_MODE               = 'a',
   IDX_BACKEND_DEVICES           = 'd',
   IDX_BACKEND_IGNORE_CUDA       = 0xff01,
-  IDX_BACKEND_IGNORE_OPENCL     = 0xff02,
+  IDX_BACKEND_IGNORE_HIP        = 0xff02,
+  IDX_BACKEND_IGNORE_OPENCL     = 0xff03,
   IDX_BACKEND_INFO              = 'I',
-  IDX_BACKEND_VECTOR_WIDTH      = 0xff03,
-  IDX_BENCHMARK_ALL             = 0xff04,
+  IDX_BACKEND_VECTOR_WIDTH      = 0xff04,
+  IDX_BENCHMARK_ALL             = 0xff05,
   IDX_BENCHMARK                 = 'b',
-  IDX_BITMAP_MAX                = 0xff05,
-  IDX_BITMAP_MIN                = 0xff06,
+  IDX_BITMAP_MAX                = 0xff06,
+  IDX_BITMAP_MIN                = 0xff07,
   #ifdef WITH_BRAIN
   IDX_BRAIN_CLIENT              = 'z',
-  IDX_BRAIN_CLIENT_FEATURES     = 0xff07,
-  IDX_BRAIN_HOST                = 0xff08,
-  IDX_BRAIN_PASSWORD            = 0xff09,
-  IDX_BRAIN_PORT                = 0xff0a,
-  IDX_BRAIN_SERVER              = 0xff0b,
-  IDX_BRAIN_SERVER_TIMER        = 0xff0c,
-  IDX_BRAIN_SESSION             = 0xff0d,
-  IDX_BRAIN_SESSION_WHITELIST   = 0xff0e,
+  IDX_BRAIN_CLIENT_FEATURES     = 0xff08,
+  IDX_BRAIN_HOST                = 0xff09,
+  IDX_BRAIN_PASSWORD            = 0xff0a,
+  IDX_BRAIN_PORT                = 0xff0b,
+  IDX_BRAIN_SERVER              = 0xff0c,
+  IDX_BRAIN_SERVER_TIMER        = 0xff0d,
+  IDX_BRAIN_SESSION             = 0xff0e,
+  IDX_BRAIN_SESSION_WHITELIST   = 0xff0f,
   #endif
-  IDX_CPU_AFFINITY              = 0xff0f,
+  IDX_CPU_AFFINITY              = 0xff10,
   IDX_CUSTOM_CHARSET_1          = '1',
   IDX_CUSTOM_CHARSET_2          = '2',
   IDX_CUSTOM_CHARSET_3          = '3',
   IDX_CUSTOM_CHARSET_4          = '4',
-  IDX_DEBUG_FILE                = 0xff10,
-  IDX_DEBUG_MODE                = 0xff11,
-  IDX_ENCODING_FROM             = 0xff12,
-  IDX_ENCODING_TO               = 0xff13,
-  IDX_HASH_INFO                 = 0xff14,
-  IDX_FORCE                     = 0xff15,
-  IDX_HWMON_DISABLE             = 0xff16,
-  IDX_HWMON_TEMP_ABORT          = 0xff17,
+  IDX_DEBUG_FILE                = 0xff11,
+  IDX_DEBUG_MODE                = 0xff12,
+  IDX_ENCODING_FROM             = 0xff13,
+  IDX_ENCODING_TO               = 0xff14,
+  IDX_HASH_INFO                 = 0xff15,
+  IDX_FORCE                     = 0xff16,
+  IDX_HWMON_DISABLE             = 0xff17,
+  IDX_HWMON_TEMP_ABORT          = 0xff18,
   IDX_HASH_MODE                 = 'm',
-  IDX_HCCAPX_MESSAGE_PAIR       = 0xff18,
+  IDX_HCCAPX_MESSAGE_PAIR       = 0xff19,
   IDX_HELP                      = 'h',
-  IDX_HEX_CHARSET               = 0xff19,
-  IDX_HEX_SALT                  = 0xff1a,
-  IDX_HEX_WORDLIST              = 0xff1b,
-  IDX_HOOK_THREADS              = 0xff1c,
+  IDX_HEX_CHARSET               = 0xff1a,
+  IDX_HEX_SALT                  = 0xff1b,
+  IDX_HEX_WORDLIST              = 0xff1c,
+  IDX_HOOK_THREADS              = 0xff1d,
+  IDX_IDENTIFY                  = 0xff1e,
   IDX_INCREMENT                 = 'i',
-  IDX_INCREMENT_MAX             = 0xff1d,
-  IDX_INCREMENT_MIN             = 0xff1e,
-  IDX_INDUCTION_DIR             = 0xff1f,
-  IDX_KEEP_GUESSING             = 0xff20,
+  IDX_INCREMENT_MAX             = 0xff1f,
+  IDX_INCREMENT_MIN             = 0xff20,
+  IDX_INDUCTION_DIR             = 0xff21,
+  IDX_KEEP_GUESSING             = 0xff22,
   IDX_KERNEL_ACCEL              = 'n',
   IDX_KERNEL_LOOPS              = 'u',
   IDX_KERNEL_THREADS            = 'T',
-  IDX_KEYBOARD_LAYOUT_MAPPING   = 0xff21,
-  IDX_KEYSPACE                  = 0xff22,
-  IDX_LEFT                      = 0xff23,
+  IDX_KEYBOARD_LAYOUT_MAPPING   = 0xff23,
+  IDX_KEYSPACE                  = 0xff24,
+  IDX_LEFT                      = 0xff25,
   IDX_LIMIT                     = 'l',
-  IDX_LOGFILE_DISABLE           = 0xff24,
-  IDX_LOOPBACK                  = 0xff25,
-  IDX_MACHINE_READABLE          = 0xff26,
-  IDX_MARKOV_CLASSIC            = 0xff27,
-  IDX_MARKOV_DISABLE            = 0xff28,
-  IDX_MARKOV_HCSTAT2            = 0xff29,
+  IDX_LOGFILE_DISABLE           = 0xff26,
+  IDX_LOOPBACK                  = 0xff27,
+  IDX_MACHINE_READABLE          = 0xff28,
+  IDX_MARKOV_CLASSIC            = 0xff29,
+  IDX_MARKOV_DISABLE            = 0xff2a,
+  IDX_MARKOV_HCSTAT2            = 0xff2b,
+  IDX_MARKOV_INVERSE            = 0xff2c,
   IDX_MARKOV_THRESHOLD          = 't',
-  IDX_NONCE_ERROR_CORRECTIONS   = 0xff2a,
+  IDX_NONCE_ERROR_CORRECTIONS   = 0xff2d,
   IDX_OPENCL_DEVICE_TYPES       = 'D',
   IDX_OPTIMIZED_KERNEL_ENABLE   = 'O',
-  IDX_OUTFILE_AUTOHEX_DISABLE   = 0xff2b,
-  IDX_OUTFILE_CHECK_DIR         = 0xff2c,
-  IDX_OUTFILE_CHECK_TIMER       = 0xff2d,
-  IDX_OUTFILE_FORMAT            = 0xff2e,
+  IDX_MULTIPLY_ACCEL_DISABLE    = 'M',
+  IDX_OUTFILE_AUTOHEX_DISABLE   = 0xff2e,
+  IDX_OUTFILE_CHECK_DIR         = 0xff2f,
+  IDX_OUTFILE_CHECK_TIMER       = 0xff30,
+  IDX_OUTFILE_FORMAT            = 0xff31,
   IDX_OUTFILE                   = 'o',
-  IDX_POTFILE_DISABLE           = 0xff2f,
-  IDX_POTFILE_PATH              = 0xff30,
-  IDX_PROGRESS_ONLY             = 0xff31,
-  IDX_QUIET                     = 0xff32,
-  IDX_REMOVE                    = 0xff33,
-  IDX_REMOVE_TIMER              = 0xff34,
-  IDX_RESTORE                   = 0xff35,
-  IDX_RESTORE_DISABLE           = 0xff36,
-  IDX_RESTORE_FILE_PATH         = 0xff37,
+  IDX_POTFILE_DISABLE           = 0xff32,
+  IDX_POTFILE_PATH              = 0xff33,
+  IDX_PROGRESS_ONLY             = 0xff34,
+  IDX_QUIET                     = 0xff35,
+  IDX_REMOVE                    = 0xff36,
+  IDX_REMOVE_TIMER              = 0xff37,
+  IDX_RESTORE                   = 0xff38,
+  IDX_RESTORE_DISABLE           = 0xff39,
+  IDX_RESTORE_FILE_PATH         = 0xff3a,
   IDX_RP_FILE                   = 'r',
-  IDX_RP_GEN_FUNC_MAX           = 0xff38,
-  IDX_RP_GEN_FUNC_MIN           = 0xff39,
+  IDX_RP_GEN_FUNC_MAX           = 0xff3b,
+  IDX_RP_GEN_FUNC_MIN           = 0xff3c,
   IDX_RP_GEN                    = 'g',
-  IDX_RP_GEN_SEED               = 0xff3a,
+  IDX_RP_GEN_SEED               = 0xff3d,
   IDX_RULE_BUF_L                = 'j',
   IDX_RULE_BUF_R                = 'k',
-  IDX_RUNTIME                   = 0xff3b,
-  IDX_SCRYPT_TMTO               = 0xff3c,
+  IDX_RUNTIME                   = 0xff3e,
+  IDX_SCRYPT_TMTO               = 0xff3f,
   IDX_SEGMENT_SIZE              = 'c',
-  IDX_SELF_TEST_DISABLE         = 0xff3d,
+  IDX_SELF_TEST_DISABLE         = 0xff40,
   IDX_SEPARATOR                 = 'p',
-  IDX_SESSION                   = 0xff3e,
-  IDX_SHOW                      = 0xff3f,
+  IDX_SESSION                   = 0xff41,
+  IDX_SHOW                      = 0xff42,
   IDX_SKIP                      = 's',
   IDX_SLOW_CANDIDATES           = 'S',
-  IDX_SPEED_ONLY                = 0xff40,
-  IDX_SPIN_DAMP                 = 0xff41,
-  IDX_STATUS                    = 0xff42,
-  IDX_STATUS_JSON               = 0xff43,
-  IDX_STATUS_TIMER              = 0xff44,
-  IDX_STDOUT_FLAG               = 0xff45,
-  IDX_STDIN_TIMEOUT_ABORT       = 0xff46,
-  IDX_TRUECRYPT_KEYFILES        = 0xff47,
-  IDX_USERNAME                  = 0xff48,
-  IDX_VERACRYPT_KEYFILES        = 0xff49,
-  IDX_VERACRYPT_PIM_START       = 0xff4a,
-  IDX_VERACRYPT_PIM_STOP        = 0xff4b,
+  IDX_SPEED_ONLY                = 0xff43,
+  IDX_SPIN_DAMP                 = 0xff44,
+  IDX_STATUS                    = 0xff45,
+  IDX_STATUS_JSON               = 0xff46,
+  IDX_STATUS_TIMER              = 0xff47,
+  IDX_STDOUT_FLAG               = 0xff48,
+  IDX_STDIN_TIMEOUT_ABORT       = 0xff49,
+  IDX_TRUECRYPT_KEYFILES        = 0xff4a,
+  IDX_USERNAME                  = 0xff4b,
+  IDX_VERACRYPT_KEYFILES        = 0xff4c,
+  IDX_VERACRYPT_PIM_START       = 0xff4d,
+  IDX_VERACRYPT_PIM_STOP        = 0xff4e,
   IDX_VERSION_LOWER             = 'v',
   IDX_VERSION                   = 'V',
-  IDX_WORDLIST_AUTOHEX_DISABLE  = 0xff4c,
+  IDX_WORDLIST_AUTOHEX_DISABLE  = 0xff4f,
   IDX_WORKLOAD_PROFILE          = 'w',
 
 } user_options_map_t;
@@ -1056,13 +1074,18 @@ typedef struct hc_fp
 
   bool        is_gzip;
   bool        is_zip;
+  int         bom_size;
 
   char       *mode;
   const char *path;
+
 } HCFILE;
 
 #include "ext_nvrtc.h"
+#include "ext_hiprtc.h"
+
 #include "ext_cuda.h"
+#include "ext_hip.h"
 #include "ext_OpenCL.h"
 
 typedef struct hc_device_param
@@ -1116,6 +1139,7 @@ typedef struct hc_device_param
   u32     kernel_wgs_amp;
   u32     kernel_wgs_tm;
   u32     kernel_wgs_memset;
+  u32     kernel_wgs_bzero;
   u32     kernel_wgs_atinit;
   u32     kernel_wgs_utf8toutf16le;
   u32     kernel_wgs_decompress;
@@ -1141,6 +1165,7 @@ typedef struct hc_device_param
   u32     kernel_preferred_wgs_multiple_amp;
   u32     kernel_preferred_wgs_multiple_tm;
   u32     kernel_preferred_wgs_multiple_memset;
+  u32     kernel_preferred_wgs_multiple_bzero;
   u32     kernel_preferred_wgs_multiple_atinit;
   u32     kernel_preferred_wgs_multiple_utf8toutf16le;
   u32     kernel_preferred_wgs_multiple_decompress;
@@ -1166,6 +1191,7 @@ typedef struct hc_device_param
   u64     kernel_local_mem_size_amp;
   u64     kernel_local_mem_size_tm;
   u64     kernel_local_mem_size_memset;
+  u64     kernel_local_mem_size_bzero;
   u64     kernel_local_mem_size_atinit;
   u64     kernel_local_mem_size_utf8toutf16le;
   u64     kernel_local_mem_size_decompress;
@@ -1191,6 +1217,7 @@ typedef struct hc_device_param
   u64     kernel_dynamic_local_mem_size_amp;
   u64     kernel_dynamic_local_mem_size_tm;
   u64     kernel_dynamic_local_mem_size_memset;
+  u64     kernel_dynamic_local_mem_size_bzero;
   u64     kernel_dynamic_local_mem_size_atinit;
   u64     kernel_dynamic_local_mem_size_utf8toutf16le;
   u64     kernel_dynamic_local_mem_size_decompress;
@@ -1352,6 +1379,7 @@ typedef struct hc_device_param
   void   *kernel_params_amp[PARAMCNT];
   void   *kernel_params_tm[PARAMCNT];
   void   *kernel_params_memset[PARAMCNT];
+  void   *kernel_params_bzero[PARAMCNT];
   void   *kernel_params_atinit[PARAMCNT];
   void   *kernel_params_utf8toutf16le[PARAMCNT];
   void   *kernel_params_decompress[PARAMCNT];
@@ -1373,6 +1401,9 @@ typedef struct hc_device_param
 
   u32     kernel_params_memset_buf32[PARAMCNT];
   u64     kernel_params_memset_buf64[PARAMCNT];
+
+  u32     kernel_params_bzero_buf32[PARAMCNT];
+  u64     kernel_params_bzero_buf64[PARAMCNT];
 
   u32     kernel_params_atinit_buf32[PARAMCNT];
   u64     kernel_params_atinit_buf64[PARAMCNT];
@@ -1418,6 +1449,7 @@ typedef struct hc_device_param
   CUfunction        cuda_function_amp;
   CUfunction        cuda_function_tm;
   CUfunction        cuda_function_memset;
+  CUfunction        cuda_function_bzero;
   CUfunction        cuda_function_atinit;
   CUfunction        cuda_function_utf8toutf16le;
   CUfunction        cuda_function_decompress;
@@ -1463,6 +1495,87 @@ typedef struct hc_device_param
   CUdeviceptr       cuda_d_st_salts_buf;
   CUdeviceptr       cuda_d_st_esalts_buf;
 
+  // API: hip
+
+  bool              is_hip;
+
+  int               hip_warp_size;
+
+  HIPdevice         hip_device;
+  HIPcontext        hip_context;
+  HIPstream         hip_stream;
+
+  HIPevent          hip_event1;
+  HIPevent          hip_event2;
+
+  HIPmodule         hip_module;
+  HIPmodule         hip_module_shared;
+  HIPmodule         hip_module_mp;
+  HIPmodule         hip_module_amp;
+
+  HIPfunction       hip_function1;
+  HIPfunction       hip_function12;
+  HIPfunction       hip_function2p;
+  HIPfunction       hip_function2;
+  HIPfunction       hip_function2e;
+  HIPfunction       hip_function23;
+  HIPfunction       hip_function3;
+  HIPfunction       hip_function4;
+  HIPfunction       hip_function_init2;
+  HIPfunction       hip_function_loop2p;
+  HIPfunction       hip_function_loop2;
+  HIPfunction       hip_function_mp;
+  HIPfunction       hip_function_mp_l;
+  HIPfunction       hip_function_mp_r;
+  HIPfunction       hip_function_amp;
+  HIPfunction       hip_function_tm;
+  HIPfunction       hip_function_memset;
+  HIPfunction       hip_function_bzero;
+  HIPfunction       hip_function_atinit;
+  HIPfunction       hip_function_utf8toutf16le;
+  HIPfunction       hip_function_decompress;
+  HIPfunction       hip_function_aux1;
+  HIPfunction       hip_function_aux2;
+  HIPfunction       hip_function_aux3;
+  HIPfunction       hip_function_aux4;
+
+  HIPdeviceptr      hip_d_pws_buf;
+  HIPdeviceptr      hip_d_pws_amp_buf;
+  HIPdeviceptr      hip_d_pws_comp_buf;
+  HIPdeviceptr      hip_d_pws_idx;
+  HIPdeviceptr      hip_d_rules;
+  HIPdeviceptr      hip_d_rules_c;
+  HIPdeviceptr      hip_d_combs;
+  HIPdeviceptr      hip_d_combs_c;
+  HIPdeviceptr      hip_d_bfs;
+  HIPdeviceptr      hip_d_bfs_c;
+  HIPdeviceptr      hip_d_tm_c;
+  HIPdeviceptr      hip_d_bitmap_s1_a;
+  HIPdeviceptr      hip_d_bitmap_s1_b;
+  HIPdeviceptr      hip_d_bitmap_s1_c;
+  HIPdeviceptr      hip_d_bitmap_s1_d;
+  HIPdeviceptr      hip_d_bitmap_s2_a;
+  HIPdeviceptr      hip_d_bitmap_s2_b;
+  HIPdeviceptr      hip_d_bitmap_s2_c;
+  HIPdeviceptr      hip_d_bitmap_s2_d;
+  HIPdeviceptr      hip_d_plain_bufs;
+  HIPdeviceptr      hip_d_digests_buf;
+  HIPdeviceptr      hip_d_digests_shown;
+  HIPdeviceptr      hip_d_salt_bufs;
+  HIPdeviceptr      hip_d_esalt_bufs;
+  HIPdeviceptr      hip_d_tmps;
+  HIPdeviceptr      hip_d_hooks;
+  HIPdeviceptr      hip_d_result;
+  HIPdeviceptr      hip_d_extra0_buf;
+  HIPdeviceptr      hip_d_extra1_buf;
+  HIPdeviceptr      hip_d_extra2_buf;
+  HIPdeviceptr      hip_d_extra3_buf;
+  HIPdeviceptr      hip_d_root_css_buf;
+  HIPdeviceptr      hip_d_markov_css_buf;
+  HIPdeviceptr      hip_d_st_digests_buf;
+  HIPdeviceptr      hip_d_st_salts_buf;
+  HIPdeviceptr      hip_d_st_esalts_buf;
+
   // API: opencl
 
   bool              is_opencl;
@@ -1503,6 +1616,7 @@ typedef struct hc_device_param
   cl_kernel         opencl_kernel_amp;
   cl_kernel         opencl_kernel_tm;
   cl_kernel         opencl_kernel_memset;
+  cl_kernel         opencl_kernel_bzero;
   cl_kernel         opencl_kernel_atinit;
   cl_kernel         opencl_kernel_utf8toutf16le;
   cl_kernel         opencl_kernel_decompress;
@@ -1554,18 +1668,25 @@ typedef struct backend_ctx
 {
   bool                enabled;
 
-  void               *ocl;
   void               *cuda;
+  void               *hip;
+  void               *ocl;
+
   void               *nvrtc;
+  void               *hiprtc;
 
   int                 backend_device_from_cuda[DEVICES_MAX];                              // from cuda device index to backend device index
+  int                 backend_device_from_hip[DEVICES_MAX];                               // from hip device index to backend device index
   int                 backend_device_from_opencl[DEVICES_MAX];                            // from opencl device index to backend device index
   int                 backend_device_from_opencl_platform[CL_PLATFORMS_MAX][DEVICES_MAX]; // from opencl device index to backend device index (by platform)
 
   int                 backend_devices_cnt;
   int                 backend_devices_active;
+
   int                 cuda_devices_cnt;
   int                 cuda_devices_active;
+  int                 hip_devices_cnt;
+  int                 hip_devices_active;
   int                 opencl_devices_cnt;
   int                 opencl_devices_active;
 
@@ -1583,7 +1704,9 @@ typedef struct backend_ctx
   bool                need_adl;
   bool                need_nvml;
   bool                need_nvapi;
-  bool                need_sysfs;
+  bool                need_sysfs_amdgpu;
+  bool                need_sysfs_cpu;
+  bool                need_iokit;
 
   int                 comptime;
 
@@ -1596,6 +1719,14 @@ typedef struct backend_ctx
 
   int                 nvrtc_driver_version;
   int                 cuda_driver_version;
+
+  // hip
+
+  int                 rc_hip_init;
+  int                 rc_hiprtc_init;
+
+  int                 hiprtc_driver_version;
+  int                 hip_driver_version;
 
   // opencl
 
@@ -1626,14 +1757,18 @@ typedef enum kernel_workload
 #include "ext_ADL.h"
 #include "ext_nvapi.h"
 #include "ext_nvml.h"
-#include "ext_sysfs.h"
+#include "ext_sysfs_amdgpu.h"
+#include "ext_sysfs_cpu.h"
+#include "ext_iokit.h"
 
 typedef struct hm_attrs
 {
-  HM_ADAPTER_ADL     adl;
-  HM_ADAPTER_NVML    nvml;
-  HM_ADAPTER_NVAPI   nvapi;
-  HM_ADAPTER_SYSFS   sysfs;
+  HM_ADAPTER_ADL          adl;
+  HM_ADAPTER_NVML         nvml;
+  HM_ADAPTER_NVAPI        nvapi;
+  HM_ADAPTER_SYSFS_AMDGPU sysfs_amdgpu;
+  HM_ADAPTER_SYSFS_CPU    sysfs_cpu;
+  HM_ADAPTER_IOKIT        iokit;
 
   int od_version;
 
@@ -1657,7 +1792,9 @@ typedef struct hwmon_ctx
   void *hm_adl;
   void *hm_nvml;
   void *hm_nvapi;
-  void *hm_sysfs;
+  void *hm_sysfs_amdgpu;
+  void *hm_sysfs_cpu;
+  void *hm_iokit;
 
   hm_attrs_t *hm_device;
 
@@ -1939,6 +2076,7 @@ typedef struct user_options
   char       **hc_argv;
 
   bool         attack_mode_chgd;
+  bool         autodetect;
   #ifdef WITH_BRAIN
   bool         brain_host_chgd;
   bool         brain_port_chgd;
@@ -1947,6 +2085,7 @@ typedef struct user_options
   #endif
   bool         hash_mode_chgd;
   bool         hccapx_message_pair_chgd;
+  bool         identify;
   bool         increment_max_chgd;
   bool         increment_min_chgd;
   bool         kernel_accel_chgd;
@@ -1987,10 +2126,13 @@ typedef struct user_options
   bool         machine_readable;
   bool         markov_classic;
   bool         markov_disable;
+  bool         markov_inverse;
   bool         backend_ignore_cuda;
+  bool         backend_ignore_hip;
   bool         backend_ignore_opencl;
   bool         backend_info;
   bool         optimized_kernel_enable;
+  bool         multiply_accel_disable;
   bool         outfile_autohex;
   bool         potfile_disable;
   bool         progress_only;
@@ -2103,6 +2245,13 @@ typedef struct user_options_extra
 
 } user_options_extra_t;
 
+typedef struct brain_ctx
+{
+  bool support;     // general brain support compiled in (server or client)
+  bool enabled;     // brain support required by user request on command line
+
+} brain_ctx_t;
+
 typedef struct bitmap_ctx
 {
   bool enabled;
@@ -2130,6 +2279,7 @@ typedef struct folder_config
   char *cwd;
   char *install_dir;
   char *profile_dir;
+  char *cache_dir;
   char *session_dir;
   char *shared_dir;
   char *cpath_real;
@@ -2235,6 +2385,9 @@ typedef struct device_info
   double  exec_msec_dev;
   char   *speed_sec_dev;
   char   *guess_candidates_dev;
+  #if defined(__APPLE__)
+  char   *hwmon_fan_dev;
+  #endif
   char   *hwmon_dev;
   int     corespeed_dev;
   int     memoryspeed_dev;
@@ -2564,6 +2717,7 @@ typedef struct module_ctx
 
 typedef struct hashcat_ctx
 {
+  brain_ctx_t           *brain_ctx;
   bitmap_ctx_t          *bitmap_ctx;
   combinator_ctx_t      *combinator_ctx;
   cpt_ctx_t             *cpt_ctx;
@@ -2677,7 +2831,7 @@ typedef enum hash_category
   HASH_CATEGORY_PRIVATE_KEY             = 20,
   HASH_CATEGORY_IMS                     = 21,
   HASH_CATEGORY_CRYPTOCURRENCY_WALLET   = 22,
-
+  HASH_CATEGORY_FBE                     = 23
 } hash_category_t;
 
 // hash specific

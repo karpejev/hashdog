@@ -20,9 +20,9 @@
 #endif
 
 #ifdef WITH_BRAIN
-static const char *short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OSz";
+static const char *short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSz";
 #else
-static const char *short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OS";
+static const char *short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMS";
 #endif
 
 static const struct option long_options[] =
@@ -31,6 +31,7 @@ static const struct option long_options[] =
   {"attack-mode",               required_argument, NULL, IDX_ATTACK_MODE},
   {"backend-devices",           required_argument, NULL, IDX_BACKEND_DEVICES},
   {"backend-ignore-cuda",       no_argument,       NULL, IDX_BACKEND_IGNORE_CUDA},
+  {"backend-ignore-hip",        no_argument,       NULL, IDX_BACKEND_IGNORE_HIP},
   {"backend-ignore-opencl",     no_argument,       NULL, IDX_BACKEND_IGNORE_OPENCL},
   {"backend-info",              no_argument,       NULL, IDX_BACKEND_INFO},
   {"backend-vector-width",      required_argument, NULL, IDX_BACKEND_VECTOR_WIDTH},
@@ -63,6 +64,7 @@ static const struct option long_options[] =
   {"hex-salt",                  no_argument,       NULL, IDX_HEX_SALT},
   {"hex-wordlist",              no_argument,       NULL, IDX_HEX_WORDLIST},
   {"hook-threads",              required_argument, NULL, IDX_HOOK_THREADS},
+  {"identify",                  no_argument,       NULL, IDX_IDENTIFY},
   {"increment-max",             required_argument, NULL, IDX_INCREMENT_MAX},
   {"increment-min",             required_argument, NULL, IDX_INCREMENT_MIN},
   {"increment",                 no_argument,       NULL, IDX_INCREMENT},
@@ -81,10 +83,12 @@ static const struct option long_options[] =
   {"markov-classic",            no_argument,       NULL, IDX_MARKOV_CLASSIC},
   {"markov-disable",            no_argument,       NULL, IDX_MARKOV_DISABLE},
   {"markov-hcstat2",            required_argument, NULL, IDX_MARKOV_HCSTAT2},
+  {"markov-inverse",            no_argument,       NULL, IDX_MARKOV_INVERSE},
   {"markov-threshold",          required_argument, NULL, IDX_MARKOV_THRESHOLD},
   {"nonce-error-corrections",   required_argument, NULL, IDX_NONCE_ERROR_CORRECTIONS},
   {"opencl-device-types",       required_argument, NULL, IDX_OPENCL_DEVICE_TYPES},
   {"optimized-kernel-enable",   no_argument,       NULL, IDX_OPTIMIZED_KERNEL_ENABLE},
+  {"multiply-accel-disable",    no_argument,       NULL, IDX_MULTIPLY_ACCEL_DISABLE},
   {"outfile-autohex-disable",   no_argument,       NULL, IDX_OUTFILE_AUTOHEX_DISABLE},
   {"outfile-check-dir",         required_argument, NULL, IDX_OUTFILE_CHECK_DIR},
   {"outfile-check-timer",       required_argument, NULL, IDX_OUTFILE_CHECK_TIMER},
@@ -157,8 +161,10 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
 
   user_options->advice_disable            = ADVICE_DISABLE;
   user_options->attack_mode               = ATTACK_MODE;
+  user_options->autodetect                = AUTODETECT;
   user_options->backend_devices           = NULL;
   user_options->backend_ignore_cuda       = BACKEND_IGNORE_CUDA;
+  user_options->backend_ignore_hip       = BACKEND_IGNORE_HIP;
   user_options->backend_ignore_opencl     = BACKEND_IGNORE_OPENCL;
   user_options->backend_info              = BACKEND_INFO;
   user_options->backend_vector_width      = BACKEND_VECTOR_WIDTH;
@@ -195,6 +201,7 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->hex_salt                  = HEX_SALT;
   user_options->hex_wordlist              = HEX_WORDLIST;
   user_options->hook_threads              = HOOK_THREADS;
+  user_options->identify                  = IDENTIFY;
   user_options->increment                 = INCREMENT;
   user_options->increment_max             = INCREMENT_MAX;
   user_options->increment_min             = INCREMENT_MIN;
@@ -213,10 +220,12 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->markov_classic            = MARKOV_CLASSIC;
   user_options->markov_disable            = MARKOV_DISABLE;
   user_options->markov_hcstat2            = NULL;
+  user_options->markov_inverse            = MARKOV_INVERSE;
   user_options->markov_threshold          = MARKOV_THRESHOLD;
   user_options->nonce_error_corrections   = NONCE_ERROR_CORRECTIONS;
   user_options->opencl_device_types       = NULL;
   user_options->optimized_kernel_enable   = OPTIMIZED_KERNEL_ENABLE;
+  user_options->multiply_accel_disable    = MULTIPLY_ACCEL_DISABLE;
   user_options->outfile_autohex           = OUTFILE_AUTOHEX;
   user_options->outfile_check_dir         = NULL;
   user_options->outfile_check_timer       = OUTFILE_CHECK_TIMER;
@@ -395,6 +404,7 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_STDOUT_FLAG:               user_options->stdout_flag               = true;                            break;
       case IDX_STDIN_TIMEOUT_ABORT:       user_options->stdin_timeout_abort       = hc_strtoul (optarg, NULL, 10);
                                           user_options->stdin_timeout_abort_chgd  = true;                            break;
+      case IDX_IDENTIFY:                  user_options->identify                  = true;                            break;
       case IDX_SPEED_ONLY:                user_options->speed_only                = true;                            break;
       case IDX_PROGRESS_ONLY:             user_options->progress_only             = true;                            break;
       case IDX_RESTORE_DISABLE:           user_options->restore_disable           = true;                            break;
@@ -421,6 +431,7 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_RULE_BUF_R:                user_options->rule_buf_r                = optarg;                          break;
       case IDX_MARKOV_DISABLE:            user_options->markov_disable            = true;                            break;
       case IDX_MARKOV_CLASSIC:            user_options->markov_classic            = true;                            break;
+      case IDX_MARKOV_INVERSE:            user_options->markov_inverse            = true;                            break;
       case IDX_MARKOV_THRESHOLD:          user_options->markov_threshold          = hc_strtoul (optarg, NULL, 10);   break;
       case IDX_MARKOV_HCSTAT2:            user_options->markov_hcstat2            = optarg;                          break;
       case IDX_OUTFILE:                   user_options->outfile                   = optarg;                          break;
@@ -434,6 +445,7 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_HEX_WORDLIST:              user_options->hex_wordlist              = true;                            break;
       case IDX_CPU_AFFINITY:              user_options->cpu_affinity              = optarg;                          break;
       case IDX_BACKEND_IGNORE_CUDA:       user_options->backend_ignore_cuda       = true;                            break;
+      case IDX_BACKEND_IGNORE_HIP:        user_options->backend_ignore_hip        = true;                            break;
       case IDX_BACKEND_IGNORE_OPENCL:     user_options->backend_ignore_opencl     = true;                            break;
       case IDX_BACKEND_INFO:              user_options->backend_info              = true;                            break;
       case IDX_BACKEND_DEVICES:           user_options->backend_devices           = optarg;                          break;
@@ -441,6 +453,7 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
                                           user_options->backend_vector_width_chgd = true;                            break;
       case IDX_OPENCL_DEVICE_TYPES:       user_options->opencl_device_types       = optarg;                          break;
       case IDX_OPTIMIZED_KERNEL_ENABLE:   user_options->optimized_kernel_enable   = true;                            break;
+      case IDX_MULTIPLY_ACCEL_DISABLE:    user_options->multiply_accel_disable    = true;                            break;
       case IDX_WORKLOAD_PROFILE:          user_options->workload_profile          = hc_strtoul (optarg, NULL, 10);
                                           user_options->workload_profile_chgd     = true;                            break;
       case IDX_KERNEL_ACCEL:              user_options->kernel_accel              = hc_strtoul (optarg, NULL, 10);
@@ -727,14 +740,14 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
 
   if ((user_options->veracrypt_pim_start_chgd == true) && (user_options->veracrypt_pim_stop_chgd == false))
   {
-    event_log_error (hashcat_ctx, "If --veracrypt-pim-start is specified then --veracrypt-pim-stop needs to be specified, too.");
+    event_log_error (hashcat_ctx, "The--veracrypt-pim-start option requires --veracrypt-pim-stop as well.");
 
     return -1;
   }
 
   if ((user_options->veracrypt_pim_start_chgd == false) && (user_options->veracrypt_pim_stop_chgd == true))
   {
-    event_log_error (hashcat_ctx, "If --veracrypt-pim-stop is specified then --veracrypt-pim-start needs to be specified, too.");
+    event_log_error (hashcat_ctx, "The --veracrypt-pim-stop option requires --veracrypt-pim-start as well.");
 
     return -1;
   }
@@ -813,7 +826,7 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
   {
     if ((user_options->attack_mode != ATTACK_MODE_STRAIGHT) && (user_options->attack_mode != ATTACK_MODE_ASSOCIATION))
     {
-      event_log_error (hashcat_ctx, "Use of -r/--rules-file and -g/--rules-generate only allowed in attack mode 0 or 9.");
+      event_log_error (hashcat_ctx, "Use of -r/--rules-file and -g/--rules-generate requires attack mode 0 or 9.");
 
       return -1;
     }
@@ -1010,7 +1023,7 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     {
       if ((user_options->rp_files_cnt == 0) && (user_options->rp_gen == 0))
       {
-        event_log_error (hashcat_ctx, "Parameter --loopback not allowed without -r/--rules-file or -g/--rules-generate.");
+        event_log_error (hashcat_ctx, "Parameter --loopback requires either -r/--rules-file or -g/--rules-generate.");
 
         return -1;
       }
@@ -1079,6 +1092,16 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     event_log_error (hashcat_ctx, "Values of --spin-damp must be between 0 and 100 (inclusive).");
 
     return -1;
+  }
+
+  if (user_options->identify == true)
+  {
+    if (user_options->hash_mode_chgd == true)
+    {
+      event_log_error (hashcat_ctx, "Can't change --hash-type (-m) in identify mode.");
+
+      return -1;
+    }
   }
 
   if (user_options->benchmark == true)
@@ -1154,6 +1177,13 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     if (user_options->progress_only == true)
     {
       event_log_error (hashcat_ctx, "Can't change --progress-only in benchmark mode.");
+
+      return -1;
+    }
+
+    if (user_options->hash_info == true)
+    {
+      event_log_error (hashcat_ctx, "Use of --hash-info is not allowed in benchmark mode.");
 
       return -1;
     }
@@ -1635,6 +1665,11 @@ void user_options_session_auto (hashcat_ctx_t *hashcat_ctx)
     {
       user_options->session = "left";
     }
+
+    if (user_options->identify == true)
+    {
+      user_options->session = "identify";
+    }
   }
 }
 
@@ -1674,6 +1709,7 @@ void user_options_preprocess (hashcat_ctx_t *hashcat_ctx)
    || user_options->keyspace        == true
    || user_options->speed_only      == true
    || user_options->progress_only   == true
+   || user_options->identify        == true
    || user_options->usage           == true)
   {
     user_options->hwmon_disable       = true;
@@ -1892,6 +1928,14 @@ void user_options_preprocess (hashcat_ctx_t *hashcat_ctx)
   {
     user_options->potfile_disable = true;
   }
+
+  if (user_options->stdout_flag == false && user_options->benchmark == false && user_options->keyspace == false)
+  {
+    if (user_options->hash_mode == 0 && user_options->hash_mode_chgd == false)
+    {
+      user_options->autodetect = true;
+    }
+  }
 }
 
 void user_options_postprocess (hashcat_ctx_t *hashcat_ctx)
@@ -1943,6 +1987,11 @@ void user_options_info (hashcat_ctx_t *hashcat_ctx)
     if (user_options->optimized_kernel_enable == true)
     {
       event_log_info (hashcat_ctx, "* --optimized-kernel-enable");
+    }
+
+    if (user_options->multiply_accel_disable == true)
+    {
+      event_log_info (hashcat_ctx, "* --multiply-accel-disable");
     }
 
     if (user_options->backend_vector_width_chgd == true)
@@ -1997,6 +2046,11 @@ void user_options_info (hashcat_ctx_t *hashcat_ctx)
     if (user_options->optimized_kernel_enable == true)
     {
       event_log_info (hashcat_ctx, "# option: --optimized-kernel-enable");
+    }
+
+    if (user_options->multiply_accel_disable == true)
+    {
+      event_log_info (hashcat_ctx, "# option: --multiply-accel-disable");
     }
 
     if (user_options->backend_vector_width_chgd == true)
@@ -2262,9 +2316,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_path_has_bom (user_options_extra->hc_hash) == true)
       {
-        event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", user_options_extra->hc_hash);
+        event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", user_options_extra->hc_hash);
 
-        return -1;
+        //return -1;
       }
     }
   }
@@ -2312,9 +2366,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_path_has_bom (rp_file) == true)
       {
-        event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", rp_file);
+        event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", rp_file);
 
-        return -1;
+        //return -1;
       }
     }
   }
@@ -2350,9 +2404,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_path_has_bom (dictfile1) == true)
       {
-        event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", dictfile1);
+        event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", dictfile1);
 
-        return -1;
+        //return -1;
       }
 
       if (hc_path_exist (dictfile2) == false)
@@ -2378,9 +2432,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_path_has_bom (dictfile2) == true)
       {
-        event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", dictfile2);
+        event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", dictfile2);
 
-        return -1;
+        //return -1;
       }
     }
   }
@@ -2410,9 +2464,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
         if (hc_path_has_bom (maskfile) == true)
         {
-          event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", maskfile);
+          event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", maskfile);
 
-          return -1;
+          //return -1;
         }
       }
     }
@@ -2454,9 +2508,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
         if (hc_path_has_bom (maskfile) == true)
         {
-          event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", maskfile);
+          event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", maskfile);
 
-          return -1;
+          //return -1;
         }
       }
     }
@@ -2498,9 +2552,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
         if (hc_path_has_bom (maskfile) == true)
         {
-          event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", maskfile);
+          event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", maskfile);
 
-          return -1;
+          //return -1;
         }
       }
     }
@@ -2546,9 +2600,9 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
 
       if (hc_path_has_bom (rp_file) == true)
       {
-        event_log_error (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", rp_file);
+        event_log_warning (hashcat_ctx, "%s: Byte Order Mark (BOM) was detected", rp_file);
 
-        return -1;
+        //return -1;
       }
     }
   }
@@ -2820,7 +2874,7 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
   {
     event_log_error (hashcat_ctx, "%s: %s", modulefile, strerror (errno));
 
-    event_log_warning (hashcat_ctx, "If you are using the hashcat binary package this error typically indicates a problem during extraction.");
+    event_log_warning (hashcat_ctx, "If you are using the hashcat binary package, this may be an extraction issue.");
     event_log_warning (hashcat_ctx, "For example, using \"7z e\" instead of using \"7z x\".");
     event_log_warning (hashcat_ctx, NULL);
 
@@ -2853,7 +2907,7 @@ int user_options_check_files (hashcat_ctx_t *hashcat_ctx)
   {
     event_log_error (hashcat_ctx, "%s: %s", kernelfile, strerror (errno));
 
-    event_log_warning (hashcat_ctx, "If you are using the hashcat binary package this error typically indicates a problem during extraction.");
+    event_log_warning (hashcat_ctx, "If you are using the hashcat binary package, this may be an extraction issue.");
     event_log_warning (hashcat_ctx, "For example, using \"7z e\" instead of using \"7z x\".");
     event_log_warning (hashcat_ctx, NULL);
 
@@ -3020,6 +3074,7 @@ void user_options_logger (hashcat_ctx_t *hashcat_ctx)
   logfile_top_uint   (user_options->hex_salt);
   logfile_top_uint   (user_options->hex_wordlist);
   logfile_top_uint   (user_options->hook_threads);
+  logfile_top_uint   (user_options->identify);
   logfile_top_uint   (user_options->increment);
   logfile_top_uint   (user_options->increment_max);
   logfile_top_uint   (user_options->increment_min);
@@ -3034,7 +3089,9 @@ void user_options_logger (hashcat_ctx_t *hashcat_ctx)
   logfile_top_uint   (user_options->machine_readable);
   logfile_top_uint   (user_options->markov_classic);
   logfile_top_uint   (user_options->markov_disable);
+  logfile_top_uint   (user_options->markov_inverse);
   logfile_top_uint   (user_options->markov_threshold);
+  logfile_top_uint   (user_options->multiply_accel_disable);
   logfile_top_uint   (user_options->backend_info);
   logfile_top_uint   (user_options->backend_vector_width);
   logfile_top_uint   (user_options->optimized_kernel_enable);

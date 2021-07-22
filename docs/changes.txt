@@ -1,4 +1,103 @@
-* changes v6.2.1 -> v6.x.x
+* changes v6.2.3 -> v6.2.x
+
+##
+## Features
+##
+
+- Added option --multiply-accel-disable (short: -M) to disable multiply the kernel-accel with the multiprocessor count automatism
+
+##
+## Bugs
+##
+
+- Fixed autotune unitialized tmps variable for slow hashes by calling _init kernel before calling _loop kernel
+- Fixed datatype in function sha384_hmac_init_vector_128() that could come into effect if vector datatype was manually set
+- Fixed false negative in all VeraCrypt hash-modes if both conditions are met: 1. use CPU for cracking and 2. PIM range was used
+
+##
+## Improvements
+##
+
+- Blake Kernels: Optimize BLAKE2B_ROUND() 64 bit rotates giving a 5% performance increase
+- Brain Session: Adds hashconfig specific opti_type and opts_type parameters to hashcat session computation to cover features like -O and -M
+- Shared Memory: Calculate kernel dynamic memory size based on CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN
+- Slow Kernels: Set some of the slowest kernels to OPTS_TYPE_MP_MULTI_DISABLE
+
+##
+## Technical
+##
+
+- HIP Kernels: Got rid of hip/hip_runtime.h dependancy to enable more easy integration of the HIP backend on Windows
+
+* changes v6.2.2 -> v6.2.3
+
+##
+## Algorithms
+##
+
+- Added hash-mode: AES-128-ECB NOKDF (PT = $salt, key = $pass)
+- Added hash-mode: AES-192-ECB NOKDF (PT = $salt, key = $pass)
+- Added hash-mode: AES-256-ECB NOKDF (PT = $salt, key = $pass)
+- Added hash-mode: iPhone passcode (UID key + System Keybag)
+- Added hash-mode: MetaMask Wallet
+- Added hash-mode: VeraCrypt PBKDF2-HMAC-Streebog-512 + XTS 512 bit  + boot-mode
+- Added hash-mode: VeraCrypt PBKDF2-HMAC-Streebog-512 + XTS 1024 bit + boot-mode
+- Added hash-mode: VeraCrypt PBKDF2-HMAC-Streebog-512 + XTS 1536 bit + boot-mode
+
+##
+## Features
+##
+
+- Added new backend support for HIP, an OpenCL alternative API for AMD GPUs (similar to CUDA for NVIDIA GPUs)
+- Added option --markov-inverse to inverse markov statistics, with the idea of reversing the order of the password candidates
+- Added temperature watchdog and fanspeed readings for CPU and GPU on macOS using iokit
+- Added temperature watchdog and utilization for CPU on linux using sysfs and procfs
+
+##
+## Bugs
+##
+
+- Fixed access violation in hashconfig_destroy if hashcat_ctx_t is only partially initialized
+- Fixed 'E' rule in pure kernel mode which was ignoring letters that are in positions that are multiples of 4
+- Fixed false negative in hash-mode 15900 (DPAPI masterkey file v2) if password was longer than 64 characters
+- Fixed hashcat_ctx leak and refactor module and kernel existence checks
+- Fixed integer overflow in Recovered/Time status view column caused by division > 0 but < 1
+- Fixed invalid ETA if --limit was specified, several salts are in a hash list and some of them were found in a potfile
+- Fixed memory leak in iconv_ctx and iconv_tmp in backend.c
+- Fixed missing option to automatically disable kernel cache in -m 25600 and -m 25800
+- Fixed out-of-boundary write in slow candidates mode in combinator attack
+
+##
+## Improvements
+##
+
+- Alias Devices: Show a warning in case the user specifically listed a device to use which in a later step is skipped because it is an alias of another active device
+- Backend Information: Added new column showing the PCI Address per CUDA/OpenCL device to easier identify broken cards
+- Bcrypt-SHA1/MD5 Kernels: Get rid of local memory use for binary to hex conversion to avoid false negatives on several OpenCL runtimes
+- CPU Affinity: Allow mask up to 64 processors in Windows and remove call to SetThreadAffinityMask as SetProcessAffinityMask limits all threads in process
+- Debug Rules: HEX-ify rules debug non-rules outputs that contain colons
+- KeePass: Increase supported size for KeePass 1 databases from 300kB to 16MB
+- Potfile: Disable potfile for hash-mode 99999
+- VeraCrypt: Increase password length support for non-boot volumes from 64 to 128
+- WPA Kernels: Increased performance by 3.5% for backend devices controlled by CUDA backend
+
+##
+## Technical
+##
+
+- Autodetect: Limit the number of errors per hash-mode try to 100 to avoid long startup time
+- Brain: Add brain_ctx_t to hashcat_ctx_t to enable runtime check if hashcat was compiled with brain support
+- File handling: Do not abort on seeing a BOM in input files, just warn and ignore the BOM
+- Folders: Do not escape the variable cpath_real to prevent certain OpenCL runtimes from running into an error which do not support escape characters
+- Java Object hashCode: Add OPTS_TYPE_SUGGEST_KG as a default option
+- LM: Workaround JiT compiler bug in -m 3000 on NV leading to false negatives with large amount of hashes
+- OpenCL Runtime: Workaround a problem of the AMD OpenCL GPU driver under macOS which results in false negatives due to changes in the kernel crypto library
+- OpenCL Runtime: Workaround JiT crash (SC failed. No reason given.) on macOS by limiting local memory allocations to 32k
+- Status View: Include time and duration info when pausing and resuming
+- Tests: Changed tests for VeraCrypt from -a 0 to -a 3, because password extension is not available to all shells
+- WinZip Kernel: Increase supported data length from 8k to 16mb
+
+* changes v6.2.1 -> v6.2.2
 
 ##
 ## Algorithms
@@ -6,8 +105,10 @@
 
 - Added hash-mode: bcrypt(md5($pass)) / bcryptmd5
 - Added hash-mode: bcrypt(sha1($pass)) / bcryptsha1
+- Added hash-mode: FortiGate256 (FortiOS256)
 - Added hash-mode: Linux Kernel Crypto API (2.4)
 - Added hash-mode: MurmurHash
+- Added hash-mode: OpenEdge Progress Encode
 - Added hash-mode: md5(utf16le($pass))
 - Added hash-mode: sha1(utf16le($pass))
 - Added hash-mode: sha256(utf16le($pass))
@@ -22,25 +123,36 @@
 - Added hash-mode: sha384(utf16le($pass).$salt)
 
 ##
+## Features
+##
+
+- Autodetect hash-type: performs an automatic analysis of input hash(es), either listing compatible algorithms, or executing the attack (if only one compatible format is found)
+- Autodetect hash-type: added option --identify to only perform autodetection of hash-type, without back-end device initialization
+
+##
 ## Bugs
 ##
 
-- Fixed error message in -a 9 mode with rules in case number of words from wordlist are not in sync with number of unique salts
-- Fixed false negatives with TrueCrypt/VeraCrypt in case zip or gzip compressed files were used as keyfiles
-- Fixed error handling logic in monitor thread to not return in case of error (disc full, permission error, ...) but to retry instead
+- Fixed error message in -a 9 mode with rules when number of words from wordlist is not in sync with number of unique salts
+- Fixed error-handling logic in monitor thread to not return in case of error (disk full, permission error, ...) but to retry instead
+- Fixed false negatives with TrueCrypt/VeraCrypt when zip- or gzip-compressed files were used as keyfiles
+- Fixed free memory-size output for skipped GPU (both automatic and manual) of --backend-info information screen
 
 ##
 ## Improvements
 ##
 
 - AES Crypt Plugin: Reduced max password length from 256 to 128 which improved performance by 22%
-- CUDA Backend: Do not warn about missing CUDA SDK installation if --stdout is used
-- OpenCL Backend: Use CL_DEVICE_BOARD_NAME_AMD instead of CL_DEVICE_NAME for device name in case OpenCL runtime supports this query
-- Performance Monitor: Add -S as a user suggestion to improve cracking performance in specific attack configurations
+- CUDA Backend: If --stdout is used, do not warn about missing CUDA SDK
+- Folder Management: Add support for XDG Base Directory specification when hashcat is installed using 'make install'
+- Hardware Monitor: Add support for GPU device utilization readings from sysfs (AMD on Linux)
+- OpenCL Backend: Use CL_DEVICE_BOARD_NAME_AMD instead of CL_DEVICE_NAME for device name (when supported by OpenCL runtime)
+- Performance Monitor: Suggest -S to improve cracking performance in specific attack configurations
 - RAR3-p (Compressed): Fix workaround in unrar library in AES constant table generation to enable multi-threading support
-- RC4 Kernels: Improved performance by 20%+ for hash-modes Kerberos 5 (etype 23), MS Office (<= 2003) and PDF (<= 1.6) by using new RC4 code
-- Status Screen: Show currently running kernel type (pure, optimized) and generator type (host, device)
-- UTF8-to-UTF16: Replaced naive UTF8 to UTF16 conversion with true conversion for RAR3, AES Crypt, MultiBit HD (scrypt) and Umbraco HMAC-SHA1
+- RC4 Kernels: Improved performance by 20%+ with new RC4 code in hash-modes Kerberos 5 (etype 23), MS Office (<= 2003) and PDF (<= 1.6)
+- Scrypt Kernels: Re-enable use of kernel cache in scrypt-based kernels
+- Status Screen: Show currently-running kernel type (pure, optimized) and generator type (host, device)
+- UTF8-to-UTF16: Replaced naive UTF8-to-UTF16 conversion with true conversion for RAR3, AES Crypt, MultiBit HD (scrypt) and Umbraco HMAC-SHA1
 
 ##
 ## Technical
@@ -49,10 +161,15 @@
 - Dependencies: Updated LZMA SDK from 19.00 to 21.02 alpha
 - Dependencies: Updated xxHash from 0.1.0 to v0.8.0 - Stable XXH3
 - Documentation: Update missing documentation in plugin developer guide for OPTS_TYPE_MP_MULTI_DISABLE and OPTS_TYPE_NATIVE_THREADS
+- Hashrate: Update inner-loop hashrate prediction to handle new salt_repeats feature and also respect _loop2 kernel runtime
 - Kernels: Add RC4 cipher to crypto library with optimized shared memory access pattern which will not cause any bank conflicts if -u <= 32
-- Kernels: Add standalone true UTF8 to UTF16 converter kernel that runs after amplifier. Use OPTS_TYPE_POST_AMP_UTF16LE from plugin
+- Kernels: Add standalone true UTF8-to-UTF16 converter kernel that runs after amplifier. Use OPTS_TYPE_POST_AMP_UTF16LE from plugin
+- Kernel Cache: Add module_jit_build_options() string from modules to kernel cache checksum calculation
 - Modules: Recategorized HASH_CATEGORY option in various modules
 - Modules: Added hash categories HASH_CATEGORY_IMS and HASH_CATEGORY_CRYPTOCURRENCY_WALLET
+- Modules: Changed hash category of Python passlib from HASH_CATEGORY_GENERIC_KDF to HASH_CATEGORY_FRAMEWORK
+- Unit-Tests: Added missing support for OPTS_TYPE_LOOP_PREPARE, OPTS_TYPE_LOOP_PREPARE2 and salt_repeats in self-test
+- Unit-Tests: Added missing unit-test for Stargazer Stellar Wallet XLM
 
 * changes v6.2.0 -> v6.2.1
 

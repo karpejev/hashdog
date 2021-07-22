@@ -21,7 +21,8 @@ static const char *HASH_NAME      = "sha512crypt $6$, SHA512 (Unix)";
 static const u64   KERN_TYPE      = 1800;
 static const u32   OPTI_TYPE      = OPTI_TYPE_ZERO_BYTE
                                   | OPTI_TYPE_USES_BITS_64;
-static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE;
+static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE
+                                  | OPTS_TYPE_MP_MULTI_DISABLE;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "hashcat";
 static const char *ST_HASH        = "$6$72820166$U4DVzpcYxgw7MVVDGGvB2/H5lRistD5.Ah4upwENR5UtffLR4X4SxSzfREv8z6wVl0jRFX40/KnYVvK4829kD1";
@@ -419,7 +420,10 @@ bool module_unstable_warning (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE
   // AMD Radeon Pro W5700X Compute Engine; 1.2 (Apr 22 2021 21:54:44); 11.3.1; 20E241
   if ((device_param->opencl_platform_vendor_id == VENDOR_ID_APPLE) && (device_param->opencl_device_type & CL_DEVICE_TYPE_GPU))
   {
-    return true;
+    if (hashconfig->opti_type & OPTI_TYPE_OPTIMIZED_KERNEL)
+    {
+      return true;
+    }
   }
 
   return false;
@@ -433,6 +437,12 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
   if (device_param->opencl_platform_vendor_id == VENDOR_ID_APPLE)
   {
     return jit_build_options;
+  }
+
+  // HIP
+  if (device_param->opencl_device_vendor_id == VENDOR_ID_AMD_USE_HIP)
+  {
+    hc_asprintf (&jit_build_options, "-fno-unroll-loops");
   }
 
   // ROCM

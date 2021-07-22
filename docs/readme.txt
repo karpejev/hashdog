@@ -7,7 +7,7 @@
            |_____|     /___________/     |_____|  /_____/        /_______|
                  :                             :                         :
 
-hashcat v6.2.1
+hashcat v6.2.3
 ==============
 
 AMD GPUs on Linux require "RadeonOpenCompute (ROCm)" Software Platform (3.1 or later)
@@ -137,18 +137,18 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - CRC32
 - Java Object hashCode()
 - MurmurHash
-- 3DES (PT = $salt, key = $pass)
-- DES (PT = $salt, key = $pass)
+- 3DES
+- DES
+- AES-128-ECB NOKDF
+- AES-192-ECB NOKDF
+- AES-256-ECB NOKDF
 - ChaCha20
 - Linux Kernel Crypto API (2.4)
-- Skip32 (PT = $salt, key = $pass)
+- Skip32
 - PBKDF2-HMAC-MD5
 - PBKDF2-HMAC-SHA1
 - PBKDF2-HMAC-SHA256
 - PBKDF2-HMAC-SHA512
-- Python passlib pbkdf2-sha512
-- Python passlib pbkdf2-sha256
-- Python passlib pbkdf2-sha1
 - scrypt
 - phpass
 - TACACS+
@@ -202,10 +202,12 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - Domain Cached Credentials (DCC), MS Cache
 - Domain Cached Credentials 2 (DCC2), MS Cache 2
 - FortiGate (FortiOS)
+- FortiGate256 (FortiOS256)
 - ArubaOS
 - Juniper IVE
 - Juniper NetScreen/SSG (ScreenOS)
 - Juniper/NetBSD sha1crypt
+- iPhone passcode (UID key + System Keybag)
 - macOS v10.4, macOS v10.5, MacOS v10.6
 - macOS v10.7
 - macOS v10.8+ (PBKDF2-SHA512)
@@ -258,6 +260,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - Lotus Notes/Domino 5
 - Lotus Notes/Domino 6
 - Lotus Notes/Domino 8
+- OpenEdge Progress Encode
 - Oracle Transportation Management (SHA256)
 - Huawei sha1(md5($pass).$salt)
 - AuthMe sha256
@@ -355,6 +358,9 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - Django (SHA-1)
 - Atlassian (PBKDF2-HMAC-SHA1)
 - Ruby on Rails Restful-Authentication
+- Python passlib pbkdf2-sha512
+- Python passlib pbkdf2-sha256
+- Python passlib pbkdf2-sha1
 - PKCS#8 Private Keys (PBKDF2-HMAC-SHA1 + 3DES/AES)
 - PKCS#8 Private Keys (PBKDF2-HMAC-SHA256 + 3DES/AES)
 - JKS Java Key Store Private Keys (SHA1)
@@ -380,6 +386,7 @@ NVIDIA GPUs require "NVIDIA Driver" (440.64 or later) and "CUDA Toolkit" (9.0 or
 - Ethereum Pre-Sale Wallet, PBKDF2-HMAC-SHA256
 - Ethereum Wallet, PBKDF2-HMAC-SHA256
 - Ethereum Wallet, SCRYPT
+- MetaMask Wallet
 - MultiBit Classic .key (MD5)
 - MultiBit HD (scrypt)
 

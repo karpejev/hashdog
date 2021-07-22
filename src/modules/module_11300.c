@@ -27,6 +27,7 @@ static const u64   OPTS_TYPE      = OPTS_TYPE_PT_GENERATE_LE
                                   | OPTS_TYPE_ST_HEX
                                   | OPTS_TYPE_ST_ADD80
                                   | OPTS_TYPE_HASH_COPY
+                                  | OPTS_TYPE_MP_MULTI_DISABLE
                                   | OPTS_TYPE_DEEP_COMP_KERNEL;
 static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "hashcat";
@@ -77,6 +78,12 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
 
   // NVIDIA GPU
   if (device_param->opencl_device_vendor_id == VENDOR_ID_NV)
+  {
+    hc_asprintf (&jit_build_options, "-D _unroll");
+  }
+
+  // HIP
+  if (device_param->opencl_device_vendor_id == VENDOR_ID_AMD_USE_HIP)
   {
     hc_asprintf (&jit_build_options, "-D _unroll");
   }

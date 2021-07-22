@@ -245,6 +245,12 @@ char *module_jit_build_options (MAYBE_UNUSED const hashconfig_t *hashconfig, MAY
     return jit_build_options;
   }
 
+  // HIP
+  if (device_param->opencl_device_vendor_id == VENDOR_ID_AMD_USE_HIP)
+  {
+    hc_asprintf (&jit_build_options, "-D _unroll");
+  }
+
   // ROCM
   if ((device_param->opencl_device_vendor_id == VENDOR_ID_AMD) && (device_param->has_vperm == true))
   {
@@ -458,7 +464,7 @@ void module_init (module_ctx_t *module_ctx)
   module_ctx->module_potfile_disable          = MODULE_DEFAULT;
   module_ctx->module_potfile_keep_all_hashes  = MODULE_DEFAULT;
   module_ctx->module_pwdump_column            = MODULE_DEFAULT;
-  module_ctx->module_pw_max                   = MODULE_DEFAULT;
+  module_ctx->module_pw_max                   = module_pw_max;
   module_ctx->module_pw_min                   = MODULE_DEFAULT;
   module_ctx->module_salt_max                 = MODULE_DEFAULT;
   module_ctx->module_salt_min                 = MODULE_DEFAULT;

@@ -26,7 +26,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   "",
   " Options Short / Long           | Type | Description                                          | Example",
   "================================+======+======================================================+=======================",
-  " -m, --hash-type                | Num  | Hash-type, see references below                      | -m 1000",
+  " -m, --hash-type                | Num  | Hash-type, references below (otherwise autodetect)   | -m 1000",
   " -a, --attack-mode              | Num  | Attack-mode, see references below                    | -a 3",
   " -V, --version                  |      | Print version                                        |",
   " -h, --help                     |      | Print help                                           |",
@@ -97,6 +97,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   " -d, --backend-devices          | Str  | Backend devices to use, separated with commas        | -d 1",
   " -D, --opencl-device-types      | Str  | OpenCL device-types to use, separated with commas    | -D 1",
   " -O, --optimized-kernel-enable  |      | Enable optimized kernels (limits password length)    |",
+  " -M, --multiply-accel-disable   |      | Disable multiply kernel-accel with processor count   |",
   " -w, --workload-profile         | Num  | Enable a specific workload profile, see pool below   | -w 3",
   " -n, --kernel-accel             | Num  | Manual workload tuning, set outerloop step size to X | -n 64",
   " -u, --kernel-loops             | Num  | Manual workload tuning, set innerloop step size to X | -u 256",
@@ -120,6 +121,7 @@ static const char *const USAGE_BIG_PRE_HASHMODES[] =
   " -2, --custom-charset2          | CS   | User-defined charset ?2                              | -2 ?l?d?s",
   " -3, --custom-charset3          | CS   | User-defined charset ?3                              |",
   " -4, --custom-charset4          | CS   | User-defined charset ?4                              |",
+  "     --identify                 |      | Shows all supported algorithms for input hashes      | --identify my.hash",
   " -i, --increment                |      | Enable mask increment mode                           |",
   "     --increment-min            | Num  | Start mask incrementing at X                         | --increment-min=4",
   "     --increment-max            | Num  | Stop mask incrementing at X                          | --increment-max=8",
@@ -190,11 +192,11 @@ static const char *const USAGE_BIG_POST_HASHMODES[] =
   "",
   "  ? | Charset",
   " ===+=========",
-  "  l | abcdefghijklmnopqrstuvwxyz",
-  "  u | ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-  "  d | 0123456789",
-  "  h | 0123456789abcdef",
-  "  H | 0123456789ABCDEF",
+  "  l | abcdefghijklmnopqrstuvwxyz [a-z]",
+  "  u | ABCDEFGHIJKLMNOPQRSTUVWXYZ [A-Z]",
+  "  d | 0123456789                 [0-9]",
+  "  h | 0123456789abcdef           [0-9a-f]",
+  "  H | 0123456789ABCDEF           [0-9A-F]",
   "  s |  !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
   "  a | ?l?u?d?s",
   "  b | 0x00 - 0xff",
@@ -239,15 +241,7 @@ static const char *const USAGE_BIG_POST_HASHMODES[] =
   NULL
 };
 
-typedef struct usage_sort
-{
-  u32   hash_mode;
-  char *hash_name;
-  u32   hash_category;
-
-} usage_sort_t;
-
-static int sort_by_usage (const void *p1, const void *p2)
+int sort_by_usage (const void *p1, const void *p2)
 {
   const usage_sort_t *u1 = (const usage_sort_t *) p1;
   const usage_sort_t *u2 = (const usage_sort_t *) p2;
