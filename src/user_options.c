@@ -20,12 +20,12 @@
 #endif
 
 #ifdef WITH_BRAIN
-static const char *short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSz";
+static const char *const short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSz";
 #else
-static const char *short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMS";
+static const char *const short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMS";
 #endif
 
-static char *SEPARATOR = ":";
+static char *const SEPARATOR = ":";
 
 static const struct option long_options[] =
 {
@@ -48,12 +48,14 @@ static const struct option long_options[] =
   {"custom-charset4",           required_argument, NULL, IDX_CUSTOM_CHARSET_4},
   {"debug-file",                required_argument, NULL, IDX_DEBUG_FILE},
   {"debug-mode",                required_argument, NULL, IDX_DEBUG_MODE},
+  {"deprecated-check-disable",  no_argument,       NULL, IDX_DEPRECATED_CHECK_DISABLE},
   {"encoding-from",             required_argument, NULL, IDX_ENCODING_FROM},
   {"encoding-to",               required_argument, NULL, IDX_ENCODING_TO},
   {"example-hashes",            no_argument,       NULL, IDX_HASH_INFO}, // alias of hash-info
   {"force",                     no_argument,       NULL, IDX_FORCE},
   {"generate-rules-func-max",   required_argument, NULL, IDX_RP_GEN_FUNC_MAX},
   {"generate-rules-func-min",   required_argument, NULL, IDX_RP_GEN_FUNC_MIN},
+  {"generate-rules-func-sel",   required_argument, NULL, IDX_RP_GEN_FUNC_SEL},
   {"generate-rules",            required_argument, NULL, IDX_RP_GEN},
   {"generate-rules-seed",       required_argument, NULL, IDX_RP_GEN_SEED},
   {"hwmon-disable",             no_argument,       NULL, IDX_HWMON_DISABLE},
@@ -147,15 +149,15 @@ static const struct option long_options[] =
   {NULL,                        0,                 NULL, 0 }
 };
 
-static const char *ENCODING_FROM = "utf-8";
-static const char *ENCODING_TO   = "utf-8";
+static const char *const ENCODING_FROM = "utf-8";
+static const char *const ENCODING_TO   = "utf-8";
 
-static const char *RULE_BUF_R = ":";
-static const char *RULE_BUF_L = ":";
+static const char *const RULE_BUF_R = ":";
+static const char *const RULE_BUF_L = ":";
 
-static const char *DEF_MASK_CS_1 = "?l?d?u";
-static const char *DEF_MASK_CS_2 = "?l?d";
-static const char *DEF_MASK_CS_3 = "?l?d*!$@_";
+static const char *const DEF_MASK_CS_1 = "?l?d?u";
+static const char *const DEF_MASK_CS_2 = "?l?d";
+static const char *const DEF_MASK_CS_3 = "?l?d*!$@_";
 
 int user_options_init (hashcat_ctx_t *hashcat_ctx)
 {
@@ -166,7 +168,7 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->autodetect                = AUTODETECT;
   user_options->backend_devices           = NULL;
   user_options->backend_ignore_cuda       = BACKEND_IGNORE_CUDA;
-  user_options->backend_ignore_hip       = BACKEND_IGNORE_HIP;
+  user_options->backend_ignore_hip        = BACKEND_IGNORE_HIP;
   user_options->backend_ignore_opencl     = BACKEND_IGNORE_OPENCL;
   user_options->backend_info              = BACKEND_INFO;
   user_options->backend_vector_width      = BACKEND_VECTOR_WIDTH;
@@ -191,6 +193,7 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->custom_charset_4          = NULL;
   user_options->debug_file                = NULL;
   user_options->debug_mode                = DEBUG_MODE;
+  user_options->deprecated_check_disable  = DEPRECATED_CHECK_DISABLE;
   user_options->encoding_from             = ENCODING_FROM;
   user_options->encoding_to               = ENCODING_TO;
   user_options->force                     = FORCE;
@@ -245,6 +248,7 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->restore_timer             = RESTORE_TIMER;
   user_options->rp_gen_func_max           = RP_GEN_FUNC_MAX;
   user_options->rp_gen_func_min           = RP_GEN_FUNC_MIN;
+  user_options->rp_gen_func_sel           = NULL;
   user_options->rp_gen                    = RP_GEN;
   user_options->rp_gen_seed               = RP_GEN_SEED;
   user_options->rule_buf_l                = RULE_BUF_L;
@@ -378,6 +382,7 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_RESTORE:                   user_options->restore                   = true;                            break;
       case IDX_QUIET:                     user_options->quiet                     = true;                            break;
       case IDX_SHOW:                      user_options->show                      = true;                            break;
+      case IDX_DEPRECATED_CHECK_DISABLE:  user_options->deprecated_check_disable  = true;                            break;
       case IDX_LEFT:                      user_options->left                      = true;                            break;
       case IDX_ADVICE_DISABLE:            user_options->advice_disable            = true;                            break;
       case IDX_USERNAME:                  user_options->username                  = true;                            break;
@@ -427,6 +432,7 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
       case IDX_RP_GEN:                    user_options->rp_gen                    = hc_strtoul (optarg, NULL, 10);   break;
       case IDX_RP_GEN_FUNC_MIN:           user_options->rp_gen_func_min           = hc_strtoul (optarg, NULL, 10);   break;
       case IDX_RP_GEN_FUNC_MAX:           user_options->rp_gen_func_max           = hc_strtoul (optarg, NULL, 10);   break;
+      case IDX_RP_GEN_FUNC_SEL:           user_options->rp_gen_func_sel           = optarg;                          break;
       case IDX_RP_GEN_SEED:               user_options->rp_gen_seed               = hc_strtoul (optarg, NULL, 10);
                                           user_options->rp_gen_seed_chgd          = true;                            break;
       case IDX_RULE_BUF_L:                user_options->rule_buf_l                = optarg;                          break;
@@ -3068,6 +3074,7 @@ void user_options_logger (hashcat_ctx_t *hashcat_ctx)
   logfile_top_string (user_options->potfile_path);
   logfile_top_string (user_options->restore_file_path);
   logfile_top_string (user_options->rp_files[0]);
+  logfile_top_string (user_options->rp_gen_func_sel);
   logfile_top_string (user_options->rule_buf_l);
   logfile_top_string (user_options->rule_buf_r);
   logfile_top_string (user_options->session);

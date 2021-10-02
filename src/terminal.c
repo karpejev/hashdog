@@ -19,8 +19,8 @@
 
 static const size_t TERMINAL_LINE_LENGTH = 79;
 
-static const char *PROMPT_ACTIVE = "[s]tatus [p]ause [b]ypass [c]heckpoint [f]inish [q]uit => ";
-static const char *PROMPT_PAUSED = "[s]tatus [r]esume [b]ypass [c]heckpoint [f]inish [q]uit => ";
+static const char *const PROMPT_ACTIVE = "[s]tatus [p]ause [b]ypass [c]heckpoint [f]inish [q]uit => ";
+static const char *const PROMPT_PAUSED = "[s]tatus [r]esume [b]ypass [c]heckpoint [f]inish [q]uit => ";
 
 void welcome_screen (hashcat_ctx_t *hashcat_ctx, const char *version_tag)
 {
@@ -117,7 +117,7 @@ void goodbye_screen (hashcat_ctx_t *hashcat_ctx, const time_t proc_start, const 
   if (user_options->identify    == true) return;
 
   char start_buf[32]; memset (start_buf, 0, sizeof (start_buf));
-  char stop_buf[32];  memset (start_buf, 0, sizeof (stop_buf));
+  char stop_buf[32];  memset (stop_buf,  0, sizeof (stop_buf));
 
   event_log_info_nn (hashcat_ctx, "Started: %s", ctime_r (&proc_start, start_buf));
   event_log_info_nn (hashcat_ctx, "Stopped: %s", ctime_r (&proc_stop,  stop_buf));
@@ -640,7 +640,7 @@ void hash_info_single (hashcat_ctx_t *hashcat_ctx, user_options_extra_t *user_op
     if (hashconfig->is_salted == true)
     {
       u32 t = hashconfig->salt_type;
-      char *t_desc = (t == SALT_TYPE_EMBEDDED) ? "Embedded\0" : (t == SALT_TYPE_GENERIC) ? "Generic\0" : "Virtual\0";
+      const char *t_desc = (t == SALT_TYPE_EMBEDDED) ? "Embedded\0" : (t == SALT_TYPE_GENERIC) ? "Generic\0" : "Virtual\0";
       event_log_info (hashcat_ctx, "  Salt.Type...........: %s", t_desc);
       event_log_info (hashcat_ctx, "  Salt.Len.Min........: %d", hashconfig->salt_min);
       event_log_info (hashcat_ctx, "  Salt.Len.Max........: %d", hashconfig->salt_max);
@@ -818,10 +818,22 @@ void backend_info (hashcat_ctx_t *hashcat_ctx)
     event_log_info (hashcat_ctx, NULL);
 
     int hip_devices_cnt    = backend_ctx->hip_devices_cnt;
-    int hip_driver_version = backend_ctx->hip_driver_version;
+    int hip_runtimeVersion = backend_ctx->hip_runtimeVersion;
 
-    event_log_info (hashcat_ctx, "HIP.Version.: %d.%d", hip_driver_version / 1000, (hip_driver_version % 100) / 10);
-    event_log_info (hashcat_ctx, NULL);
+    if (hip_runtimeVersion > 1000)
+    {
+      int hip_version_major = (hip_runtimeVersion - 0) / 10000000;
+      int hip_version_minor = (hip_runtimeVersion - (hip_version_major * 10000000)) / 100000;
+      int hip_version_patch = (hip_runtimeVersion - (hip_version_major * 10000000) - (hip_version_minor * 100000));
+
+      event_log_info (hashcat_ctx, "HIP.Version.: %d.%d.%d", hip_version_major, hip_version_minor, hip_version_patch);
+      event_log_info (hashcat_ctx, NULL);
+    }
+    else
+    {
+      event_log_info (hashcat_ctx, "HIP.Version.: %d.%d", hip_runtimeVersion / 100, hip_runtimeVersion % 10);
+      event_log_info (hashcat_ctx, NULL);
+    }
 
     for (int hip_devices_idx = 0; hip_devices_idx < hip_devices_cnt; hip_devices_idx++)
     {
@@ -1015,9 +1027,22 @@ void backend_info_compact (hashcat_ctx_t *hashcat_ctx)
   if (backend_ctx->hip)
   {
     int hip_devices_cnt    = backend_ctx->hip_devices_cnt;
-    int hip_driver_version = backend_ctx->hip_driver_version;
+    int hip_runtimeVersion = backend_ctx->hip_runtimeVersion;
 
-    const size_t len = event_log_info (hashcat_ctx, "HIP API (HIP %d.%d)", hip_driver_version / 1000, (hip_driver_version % 100) / 10);
+    size_t len;
+
+    if (hip_runtimeVersion > 1000)
+    {
+      int hip_version_major = (hip_runtimeVersion - 0) / 10000000;
+      int hip_version_minor = (hip_runtimeVersion - (hip_version_major * 10000000)) / 100000;
+      int hip_version_patch = (hip_runtimeVersion - (hip_version_major * 10000000) - (hip_version_minor * 100000));
+
+      len = event_log_info (hashcat_ctx, "HIP API (HIP %d.%d.%d)", hip_version_major, hip_version_minor, hip_version_patch);
+    }
+    else
+    {
+      len = event_log_info (hashcat_ctx, "HIP API (HIP %d.%d)", hip_runtimeVersion / 100, hip_runtimeVersion % 10);
+    }
 
     char line[HCBUFSIZ_TINY] = { 0 };
 
@@ -1398,7 +1423,8 @@ void status_display (hashcat_ctx_t *hashcat_ctx)
     hashcat_status->status_string);
 
   event_log_info (hashcat_ctx,
-    "Hash.Name........: %s",
+    "Hash.Mode........: %d (%s)",
+    hashconfig->hash_mode,
     hashcat_status->hash_name);
 
   event_log_info (hashcat_ctx,
