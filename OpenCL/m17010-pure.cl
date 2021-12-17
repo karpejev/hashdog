@@ -47,7 +47,22 @@ DECLSPEC u32 hc_bytealign_le_S (const u32 a, const u32 b, const int c)
 {
   const int c_mod_4 = c & 3;
 
-  const u32 r = hc_byte_perm_S (b, a, (0x76543210 >> (c_mod_4 * 4)) & 0xffff);
+  #if ((defined IS_AMD || defined IS_HIP) && HAS_VPERM == 0) || defined IS_GENERIC
+  const u32 r = l32_from_64_S ((v64_from_v32ab_S (b, a) >> (c_mod_4 * 8)));
+  #endif
+
+  #if ((defined IS_AMD || defined IS_HIP) && HAS_VPERM == 1) || defined IS_NV
+
+  #if defined IS_NV
+  const int selector = (0x76543210 >> (c_mod_4 * 4)) & 0xffff;
+  #endif
+
+  #if (defined IS_AMD || defined IS_HIP)
+  const int selector = l32_from_64_S (0x0706050403020100UL >> (c_mod_4 * 8));
+  #endif
+
+  const u32 r = hc_byte_perm (b, a, selector);
+  #endif
 
   return r;
 }
@@ -72,7 +87,8 @@ DECLSPEC void memzero_le_S (u32 *block, const u32 start_offset, const u32 end_of
   const u32 start_idx = start_offset / 4;
 
   // zero out bytes in the first u32 starting from 'start_offset'
-  block[start_idx] &= 0xffffffff >> ((4 - (start_offset & 3)) * 8);
+  // math is a bit complex to avoid shifting by 32 bits, which is not possible on some architectures
+  block[start_idx] &= ~(0xffffffff << ((start_offset & 3) * 8));
 
   const u32 end_idx = (end_offset + 3) / 4;
 
@@ -88,7 +104,8 @@ DECLSPEC void memzero_be_S (u32 *block, const u32 start_offset, const u32 end_of
   const u32 start_idx = start_offset / 4;
 
   // zero out bytes in the first u32 starting from 'start_offset'
-  block[start_idx] &= 0xffffffff << ((4 - (start_offset & 3)) * 8);
+  // math is a bit complex to avoid shifting by 32 bits, which is not possible on some architectures
+  block[start_idx] &= ~(0xffffffff >> ((start_offset & 3) * 8));
 
   const u32 end_idx = (end_offset + 3) / 4;
 

@@ -1,10 +1,35 @@
 * changes v6.2.5 -> v6.2.x
 
 ##
+## Algorithms
+##
+
+- Added hash-mode: Exodus Desktop Wallet (scrypt)
+
+##
+## Features
+##
+
+- Added support to use --debug-mode in attack-mode 9 (Association Attack)
+
+##
+## Bugs
+##
+
+- Fixed functional error when nonce-error-corrections that were set on the command line in hash-mode 22000/22001 were not accepted
+- Fixed missing option flag OPTS_TYPE_SUGGEST_KG for hash-mode 11600 to inform the user about possible false positives in this mode
+- Fixed undefined function call to hc_byte_perm_S() in hash-mode 17010 on non-CUDA compute devices
+
+##
 ## Technical
 ##
 
+- Association Attack: Enable module specific pw_min and pw_max settings to avoid false positives in -a 9 attack-mode
+- Tuning Database: Added a warning if a module implements module_extra_tuningdb_block but the installed computing device is not found
 - Usage Screen: On windows console, wait for any keypress if usage_mini_print() is used
+- User Options: Add new module function module_hash_decode_postprocess() to override hash specific configurations from command line
+- OpenCL Runtime: Added support to use Apple Silicon compute devices
+- OpenCL Runtime: Set default device-type to GPU with Apple Silicon compute devices
 
 * changes v6.2.4 -> v6.2.5
 

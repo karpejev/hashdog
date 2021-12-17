@@ -341,11 +341,27 @@ static bool setup_opencl_device_types_filter (hashcat_ctx_t *hashcat_ctx, const 
   {
     #if defined (__APPLE__)
 
-    // For apple use CPU only, because GPU drivers are not reliable
-    // The user can explicitly enable GPU by setting -D2
+    #include <sys/sysctl.h>
 
-    //opencl_device_types_filter = CL_DEVICE_TYPE_ALL & ~CL_DEVICE_TYPE_GPU;
-    opencl_device_types_filter = CL_DEVICE_TYPE_CPU;
+    size_t size;
+    cpu_type_t cpu_type = 0;
+    size = sizeof (cpu_type);
+    sysctlbyname ("hw.cputype", &cpu_type, &size, NULL, 0);
+
+    if (cpu_type == 0x100000c)
+    {
+      // For apple M1* use GPU only, because CPU device it is not recognized by OpenCL
+
+      opencl_device_types_filter = CL_DEVICE_TYPE_GPU;
+    }
+    else
+    {
+      // For apple use CPU only, because GPU drivers are not reliable
+      // The user can explicitly enable GPU by setting -D2
+
+      //opencl_device_types_filter = CL_DEVICE_TYPE_ALL & ~CL_DEVICE_TYPE_GPU;
+      opencl_device_types_filter = CL_DEVICE_TYPE_CPU;
+    }
 
     #else
 
@@ -5170,13 +5186,6 @@ int run_opencl_kernel_bzero (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *devi
 
   // with apple GPU clEnqueueWriteBuffer() return CL_INVALID_VALUE, workaround
 
-  if (device_param->opencl_platform_vendor_id == VENDOR_ID_APPLE && \
-     (device_param->opencl_device_vendor_id == VENDOR_ID_INTEL_SDK || device_param->opencl_device_vendor_id == VENDOR_ID_APPLE) && \
-     device_param->opencl_device_type & CL_DEVICE_TYPE_GPU)
-  {
-    return run_opencl_kernel_memset (hashcat_ctx, device_param, buf, 0, 0, size);
-  }
-
   if (num16d)
   {
     const u64 kernel_threads = device_param->kernel_wgs_bzero;
@@ -5196,7 +5205,20 @@ int run_opencl_kernel_bzero (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *devi
 
   if (num16m)
   {
-    if (hc_clEnqueueWriteBuffer (hashcat_ctx, device_param->opencl_command_queue, buf, CL_FALSE, num16d * 16, num16m, bzeros, 0, NULL, NULL) == -1) return -1;
+    if (device_param->opencl_platform_vendor_id == VENDOR_ID_APPLE && \
+       (device_param->opencl_device_vendor_id == VENDOR_ID_INTEL_SDK || device_param->opencl_device_vendor_id == VENDOR_ID_APPLE) && \
+       device_param->opencl_device_type & CL_DEVICE_TYPE_GPU)
+    {
+      u8 *bzeros_apple = (u8 *) hccalloc (num16m, sizeof (u8));
+
+      if (hc_clEnqueueWriteBuffer (hashcat_ctx, device_param->opencl_command_queue, buf, CL_TRUE, num16d * 16, num16m, bzeros_apple, 0, NULL, NULL) == -1) return -1;
+
+      hcfree (bzeros_apple);
+    }
+    else
+    {
+      if (hc_clEnqueueWriteBuffer (hashcat_ctx, device_param->opencl_command_queue, buf, CL_FALSE, num16d * 16, num16m, bzeros, 0, NULL, NULL) == -1) return -1;
+    }
   }
 
   return 0;
@@ -9623,7 +9645,7 @@ int backend_ctx_devices_init (hashcat_ctx_t *hashcat_ctx, const int comptime)
 
       if ((device_param->opencl_device_type & CL_DEVICE_TYPE_GPU) && (device_param->opencl_platform_vendor_id == VENDOR_ID_AMD))
       {
-        #define RUN_INSTRUCTION_CHECKS()
+        #define RUN_INSTRUCTION_CHECKS() \
           device_param->has_vadd     = opencl_test_instruction (hashcat_ctx, context, device_param->opencl_device, "__kernel void test () { uint r1; __asm__ __volatile__ (\"V_ADD_U32     %0, vcc, 0, 0;\"      : \"=v\"(r1)); }"); \
           device_param->has_vaddc    = opencl_test_instruction (hashcat_ctx, context, device_param->opencl_device, "__kernel void test () { uint r1; __asm__ __volatile__ (\"V_ADDC_U32    %0, vcc, 0, 0, vcc;\" : \"=v\"(r1)); }"); \
           device_param->has_vadd_co  = opencl_test_instruction (hashcat_ctx, context, device_param->opencl_device, "__kernel void test () { uint r1; __asm__ __volatile__ (\"V_ADD_CO_U32  %0, vcc, 0, 0;\"      : \"=v\"(r1)); }"); \
@@ -10535,7 +10557,7 @@ static bool load_kernel (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_p
 
       // workaround opencl issue with Apple Silicon
 
-      if (strcmp (device_param->device_name, "Apple M") != 0)
+      if (strncmp (device_param->device_name, "Apple M", 7) == 0)
       {
         if (hc_clCreateProgramWithSource (hashcat_ctx, device_param->opencl_context, 1, (const char **) kernel_sources, NULL, opencl_program) == -1) return false;
 
@@ -10562,7 +10584,7 @@ static bool load_kernel (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_p
 
         int rc_clGetProgramBuildInfo;
 
-        if (strcmp (device_param->device_name, "Apple M") != 0)
+        if (strncmp (device_param->device_name, "Apple M", 7) == 0)
         {
           rc_clGetProgramBuildInfo = hc_clGetProgramBuildInfo (hashcat_ctx, *opencl_program, device_param->opencl_device, CL_PROGRAM_BUILD_LOG, build_log_size, build_log, NULL);
         }
@@ -10589,10 +10611,7 @@ static bool load_kernel (hashcat_ctx_t *hashcat_ctx, hc_device_param_t *device_p
 
       // workaround opencl issue with Apple Silicon
 
-      if (strcmp (device_param->device_name, "Apple M") != 0)
-      {
-      }
-      else
+      if (strncmp (device_param->device_name, "Apple M", 7) != 0)
       {
         cl_program t2[1];
 
@@ -10994,6 +11013,21 @@ int backend_session_begin (hashcat_ctx_t *hashcat_ctx)
 
         if (_kernel_accel == (u32) -1) // native, makes sense if OPTS_TYPE_MP_MULTI_DISABLE is used
         {
+          if (module_ctx->module_extra_tuningdb_block != MODULE_DEFAULT)
+          {
+            event_log_warning (hashcat_ctx, "ATTENTION! This hash-mode requires manual tuning to achieve full performance.");
+            event_log_warning (hashcat_ctx, "The loss of performance can be greater than 100%% without manual tuning.");
+            event_log_warning (hashcat_ctx, NULL);
+            event_log_warning (hashcat_ctx, "This warning message disappears after a definition for the installed");
+            event_log_warning (hashcat_ctx, "compute-device in this computer has been added to either list:");
+            event_log_warning (hashcat_ctx, "- src/modules/module_%05d.c", hashconfig->hash_mode);
+            event_log_warning (hashcat_ctx, "- hashcat.hctune");
+            event_log_warning (hashcat_ctx, NULL);
+            event_log_warning (hashcat_ctx, "For instructions on tuning, see src/modules/module_%05d.c", hashconfig->hash_mode);
+            event_log_warning (hashcat_ctx, "Also, consider sending a PR to Hashcat Master so that other users can benefit from your work.");
+            event_log_warning (hashcat_ctx, NULL);
+          }
+
           device_param->kernel_accel_min = device_param->device_processors;
           device_param->kernel_accel_max = device_param->device_processors;
         }
